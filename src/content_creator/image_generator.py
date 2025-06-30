@@ -204,7 +204,8 @@ class ImageGenerator:
                     progress_callback(f"Image generated successfully: {output_path}")
                 
                 logger.info(f"Image generated: {output_path}")
-                return str(output_path)
+                # Return absolute path to ensure Gradio can access the image
+                return str(output_path.absolute())
                 
             except Exception as e:
                 logger.error(f"Failed to save image: {e}")

@@ -101,18 +101,18 @@ def get_base_model_choices():
         return [("FLUX.1-schnell (default)", "FLUX.1-schnell")]
 
 
-def get_lora_model_choices():
-    """Get list of available LoRA models for dropdown"""
+def get_checkpoint_model_choices():
+    """Get list of available checkpoint models for dropdown"""
     try:
         models = image_generator.get_available_models()
-        lora_models = [("None - No LoRA", "none")]  # Add None option
+        checkpoint_models = [("None - No Checkpoint", "none")]  # Add None option
         
         for name, info in models.items():
-            # Filter for LoRA models
+            # Filter for checkpoint models (LoRAs, checkpoints, etc.)
             model_type = info.get('type', '').lower()
-            is_lora = 'lora' in model_type or 'lora' in name.lower() or '(lora)' in name.lower()
+            is_checkpoint = 'lora' in model_type or 'lora' in name.lower() or '(lora)' in name.lower() or model_type in ['checkpoint', 'safetensors']
             
-            if is_lora:
+            if is_checkpoint:
                 description = info.get('description', '')
                 memory = info.get('memory_requirement', 'Unknown')
                 
@@ -122,12 +122,12 @@ def get_lora_model_choices():
                     warning = " ⚠️"
                 
                 choice_text = f"{name}{warning} - {memory} - {description[:50]}..."
-                lora_models.append((choice_text, name))
+                checkpoint_models.append((choice_text, name))
         
-        return lora_models
+        return checkpoint_models
     except Exception as e:
-        logger.error(f"Error getting LoRA choices: {e}")
-        return [("None - No LoRA", "none")]
+        logger.error(f"Error getting checkpoint choices: {e}")
+        return [("None - No Checkpoint", "none")]
 
 
 def search_models(query: str, platform: str = "all", limit: int = 20):
@@ -264,7 +264,7 @@ def download_model(model_name: str, model_type: str, model_details: dict, progre
                 success_msg += f"\n🖼️ Model added to image generation options"
                 # Refresh image model dropdowns
                 new_base_choices = get_base_model_choices()
-                new_lora_choices = get_lora_model_choices()
+                new_lora_choices = get_checkpoint_model_choices()
                 return success_msg, gr.update(), gr.update(choices=new_base_choices), gr.update(choices=new_lora_choices)
             
             return success_msg, gr.update(), gr.update(), gr.update()
@@ -281,7 +281,7 @@ def refresh_model_dropdowns():
     try:
         video_choices = get_model_choices()
         base_model_choices = get_base_model_choices()
-        lora_choices = get_lora_model_choices()
+        lora_choices = get_checkpoint_model_choices()
         
         return (
             gr.update(choices=video_choices),
@@ -426,7 +426,7 @@ def generate_image(
         if result:
             model_display = f"{model_name}"
             if lora_model_name and lora_model_name != "none":
-                model_display += f" (LoRA) + {base_model_name} (base)"
+                model_display += f" (Checkpoint) + {base_model_name} (base)"
             
             return (
                 f"✅ Image generated successfully using {model_display}",
@@ -681,11 +681,11 @@ def create_gradio_interface():
                             )
                             
                             img_lora_dropdown = gr.Dropdown(
-                                choices=get_lora_model_choices(),
-                                label="LoRA Model",
+                                choices=get_checkpoint_model_choices(),
+                                label="Checkpoint Model",
                                 value="none",
                                 interactive=True,
-                                info="Optional: Select a LoRA to enhance the base model"
+                                info="Optional: Select a Checkpoint to enhance the base model"
                             )
                         
                         with gr.Row():
@@ -1026,13 +1026,13 @@ def create_gradio_interface():
                     lora_models = image_generator.get_available_models()
                     lora_info = lora_models.get(lora_model_name, {})
                     
-                    info_parts.append(f"\n**LoRA Model:** {lora_model_name}")
+                    info_parts.append(f"\n**Checkpoint Model:** {lora_model_name}")
                     if lora_info.get('description'):
-                        info_parts.append(f"**LoRA Description:** {lora_info['description']}")
+                        info_parts.append(f"**Checkpoint Description:** {lora_info['description']}")
                     if lora_info.get('not_for_all_audiences'):
                         info_parts.append("⚠️ **Content Warning:** This is an uncensored model")
                 elif lora_model_name == "none":
-                    info_parts.append(f"\n**LoRA Model:** None - Using base model only")
+                    info_parts.append(f"\n**Checkpoint Model:** None - Using base model only")
                 
                 if not info_parts:
                     return "Select models to see details"
