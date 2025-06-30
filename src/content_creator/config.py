@@ -83,7 +83,7 @@ class Config:
         "Flux-NSFW-uncensored": {
             "model_id": "Heartsync/Flux-NSFW-uncensored",
             "base_model": "black-forest-labs/FLUX.1-dev",
-            "type": "flux_lora",
+            "type": "flux",
             "description": "Uncensored image generation with FLUX.1-dev + LoRA",
             "memory_requirement": "12GB",
             "supports_text_prompt": True,

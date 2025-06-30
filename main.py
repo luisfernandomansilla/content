@@ -72,33 +72,41 @@ def get_image_model_choices():
 
 
 def get_base_model_choices():
-    """Get list of available base models (non-LoRA) for dropdown"""
+    """Get list of available base models for dropdown (excluding LoRAs)"""
     try:
         models = image_generator.get_available_models()
         base_models = []
         
         for name, info in models.items():
-            # Filter out LoRA models
+            # Filter out LoRA models from base model selection
             model_type = info.get('type', '').lower()
-            is_lora = 'lora' in model_type or 'lora' in name.lower() or '(lora)' in name.lower()
+            is_lora = (
+                model_type == 'lora' or 
+                'lora' in name.lower() or 
+                '(lora)' in name.lower() or
+                info.get('requires_base_model', False)
+            )
             
+            # Only include non-LoRA models as base models
             if not is_lora:
                 description = info.get('description', '')
                 memory = info.get('memory_requirement', 'Unknown')
-                max_res = info.get('max_resolution', 'Unknown')
                 
                 # Show warning for NSFW models
                 warning = ""
                 if info.get('not_for_all_audiences'):
                     warning = " ⚠️"
                 
-                choice_text = f"{name}{warning} - {memory} - {max_res} - {description[:50]}..."
+                choice_text = f"{name}{warning} - {memory} - {description[:50]}..."
                 base_models.append((choice_text, name))
         
-        return base_models if base_models else [("FLUX.1-schnell (default)", "FLUX.1-schnell")]
+        # Sort alphabetically
+        base_models.sort(key=lambda x: x[0])
+        
+        return base_models
     except Exception as e:
         logger.error(f"Error getting base model choices: {e}")
-        return [("FLUX.1-schnell (default)", "FLUX.1-schnell")]
+        return [("FLUX.1-schnell - Default", "FLUX.1-schnell")]
 
 
 def get_checkpoint_model_choices():
@@ -110,7 +118,14 @@ def get_checkpoint_model_choices():
         for name, info in models.items():
             # Filter for checkpoint models (LoRAs, checkpoints, etc.)
             model_type = info.get('type', '').lower()
-            is_checkpoint = 'lora' in model_type or 'lora' in name.lower() or '(lora)' in name.lower() or model_type in ['checkpoint', 'safetensors']
+            is_checkpoint = (
+                model_type == 'lora' or 
+                'lora' in model_type or 
+                'lora' in name.lower() or 
+                '(lora)' in name.lower() or 
+                model_type in ['checkpoint', 'safetensors'] or
+                info.get('requires_base_model', False)
+            )
             
             if is_checkpoint:
                 description = info.get('description', '')
@@ -123,6 +138,9 @@ def get_checkpoint_model_choices():
                 
                 choice_text = f"{name}{warning} - {memory} - {description[:50]}..."
                 checkpoint_models.append((choice_text, name))
+        
+        # Sort alphabetically (keeping None at the top)
+        checkpoint_models[1:] = sorted(checkpoint_models[1:], key=lambda x: x[0])
         
         return checkpoint_models
     except Exception as e:

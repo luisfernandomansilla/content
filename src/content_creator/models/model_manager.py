@@ -184,6 +184,25 @@ class ModelManager:
     def _determine_model_type_from_files(self, model_dir: Path) -> str:
         """Determine model type from files in the model directory"""
         try:
+            # First check for LoRA files - these are the most specific
+            lora_files = list(model_dir.glob("*.safetensors")) + list(model_dir.glob("lora.*"))
+            if any("lora" in f.name.lower() for f in lora_files):
+                return "lora"
+            
+            # Check for other safetensors files that might be LoRAs (small files)
+            safetensors_files = list(model_dir.glob("*.safetensors"))
+            if safetensors_files:
+                # If only safetensors files and no model_index.json, likely a LoRA
+                json_files = list(model_dir.glob("*.json"))
+                has_pipeline_files = any(f.name in ['model_index.json', 'config.json'] for f in json_files)
+                
+                if not has_pipeline_files:
+                    # Check file size - LoRAs are typically smaller
+                    total_size = sum(f.stat().st_size for f in safetensors_files)
+                    if total_size < 1024 * 1024 * 1024:  # Less than 1GB, likely a LoRA
+                        return "lora"
+            
+            # Now check for pipeline models
             files = list(model_dir.glob("*.json")) + list(model_dir.glob("*.py"))
             file_names = [f.name.lower() for f in files]
             
@@ -200,7 +219,8 @@ class ModelManager:
             else:
                 return "unknown"
                 
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error determining model type for {model_dir}: {e}")
             return "unknown"
     
     def _estimate_memory_requirement(self, model_dir: Path) -> str:
