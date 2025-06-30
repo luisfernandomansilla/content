@@ -4,9 +4,10 @@ Main Gradio interface for Content Creator
 import os
 import logging
 import gradio as gr
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import time
 from pathlib import Path
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -374,7 +375,11 @@ def generate_video(
         
         if video_path:
             progress(1.0, desc="Video generation completed!")
-            return video_path, f"✅ Video generated successfully: {Path(video_path).name}"
+            # Ensure the video path exists and is accessible to Gradio
+            if Path(video_path).exists():
+                return video_path, f"✅ Video generated successfully: {Path(video_path).name}"
+            else:
+                return None, f"❌ Generated video file not found: {video_path}"
         else:
             return None, "❌ Failed to generate video"
             
@@ -466,16 +471,23 @@ def generate_image(
                 checkpoint_names = ", ".join(active_checkpoints)
                 model_display = f"{checkpoint_names} (Checkpoint{'s' if len(active_checkpoints) > 1 else ''}) + {base_model_name} (base)"
             
-            return (
-                f"✅ Image generated successfully using {model_display}",
-                result
-            )
+            # Ensure the result path exists and is accessible to Gradio
+            if Path(result).exists():
+                return (
+                    result,  # Return the file path directly for Gradio Image component
+                    f"✅ Image generated successfully using {model_display}"
+                )
+            else:
+                return (
+                    None,
+                    f"❌ Generated image file not found: {result}"
+                )
         else:
-            return "❌ Failed to generate image", None
+            return None, "❌ Failed to generate image"
             
     except Exception as e:
         logger.error(f"❌ Error generating image: {e}")
-        return f"❌ Error generating image: {e}", None
+        return None, f"❌ Error generating image: {e}"
 
 
 def get_hardware_info_display():
@@ -533,6 +545,86 @@ def get_default_base_model():
     except Exception as e:
         logger.error(f"Error getting default base model: {e}")
         return "FLUX.1-schnell"
+
+
+def get_gallery_files():
+    """Get all generated images and videos for gallery"""
+    try:
+        outputs_dir = Path(config.config.OUTPUT_DIR)
+        if not outputs_dir.exists():
+            return []
+        
+        # Get all media files
+        media_files = []
+        for pattern in ['*.png', '*.jpg', '*.jpeg', '*.mp4', '*.webm', '*.gif']:
+            media_files.extend(outputs_dir.glob(pattern))
+        
+        # Sort by modification time (newest first)
+        media_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+        
+        # Return as list of file paths (Gradio can handle Path objects)
+        return [str(f) for f in media_files]
+    except Exception as e:
+        logger.error(f"Error getting gallery files: {e}")
+        return []
+
+
+def get_gallery_info():
+    """Get gallery statistics"""
+    try:
+        files = get_gallery_files()
+        total_files = len(files)
+        
+        # Count by type
+        images = len([f for f in files if any(f.endswith(ext) for ext in ['.png', '.jpg', '.jpeg'])])
+        videos = len([f for f in files if any(f.endswith(ext) for ext in ['.mp4', '.webm', '.gif'])])
+        
+        # Calculate total size
+        total_size = 0
+        for file_path in files:
+            try:
+                total_size += Path(file_path).stat().st_size
+            except:
+                pass
+        
+        size_mb = total_size / (1024 * 1024)
+        
+        return f"📊 **Galería**: {total_files} archivos ({images} imágenes, {videos} videos) - {size_mb:.1f} MB"
+    except Exception as e:
+        logger.error(f"Error getting gallery info: {e}")
+        return "📊 **Galería**: Error obteniendo información"
+
+
+def delete_file(file_path: str):
+    """Delete a file from the gallery"""
+    try:
+        if file_path and Path(file_path).exists():
+            Path(file_path).unlink()
+            return f"✅ Archivo eliminado: {Path(file_path).name}", get_gallery_files(), get_gallery_info()
+        else:
+            return "❌ Archivo no encontrado", get_gallery_files(), get_gallery_info()
+    except Exception as e:
+        logger.error(f"Error deleting file: {e}")
+        return f"❌ Error eliminando archivo: {e}", get_gallery_files(), get_gallery_info()
+
+
+def clear_gallery():
+    """Clear all files from gallery"""
+    try:
+        files = get_gallery_files()
+        deleted_count = 0
+        
+        for file_path in files:
+            try:
+                Path(file_path).unlink()
+                deleted_count += 1
+            except Exception as e:
+                logger.warning(f"Could not delete {file_path}: {e}")
+        
+        return f"✅ {deleted_count} archivos eliminados de la galería", [], get_gallery_info()
+    except Exception as e:
+        logger.error(f"Error clearing gallery: {e}")
+        return f"❌ Error limpiando galería: {e}", get_gallery_files(), get_gallery_info()
 
 
 def create_gradio_interface():
