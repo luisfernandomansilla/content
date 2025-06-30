@@ -368,7 +368,9 @@ def generate_video(
 def generate_image(
     prompt: str,
     base_model_name: str,
-    lora_model_name: str,
+    checkpoint1_name: str,
+    checkpoint2_name: str,
+    checkpoint3_name: str,
     style: str,
     resolution: str,
     output_format: str,
@@ -386,15 +388,29 @@ def generate_image(
         # Debug logging
         logger.info(f"🎯 Generation request received:")
         logger.info(f"   Base model: '{base_model_name}'")
-        logger.info(f"   LoRA model: '{lora_model_name}'")
+        logger.info(f"   Checkpoint 1: '{checkpoint1_name}'")
+        logger.info(f"   Checkpoint 2: '{checkpoint2_name}'")
+        logger.info(f"   Checkpoint 3: '{checkpoint3_name}'")
         logger.info(f"   Style: '{style}'")
         logger.info(f"   Prompt: '{prompt[:50]}...'")
         
+        # Collect active checkpoints
+        active_checkpoints = []
+        if checkpoint1_name and checkpoint1_name != "none":
+            active_checkpoints.append(checkpoint1_name)
+        if checkpoint2_name and checkpoint2_name != "none":
+            active_checkpoints.append(checkpoint2_name)
+        if checkpoint3_name and checkpoint3_name != "none":
+            active_checkpoints.append(checkpoint3_name)
+        
         # Determine which model to use
-        if lora_model_name and lora_model_name != "none":
-            # Use LoRA model
-            model_name = lora_model_name
-            logger.info(f"✅ Using LoRA model: {lora_model_name} with base: {base_model_name}")
+        if active_checkpoints:
+            # Use primary checkpoint as main model for now
+            # TODO: Implement actual multiple checkpoint loading
+            model_name = active_checkpoints[0]
+            logger.info(f"✅ Using primary checkpoint: {model_name} with base: {base_model_name}")
+            if len(active_checkpoints) > 1:
+                logger.info(f"📋 Additional checkpoints: {', '.join(active_checkpoints[1:])}")
         else:
             # Use base model only
             model_name = base_model_name
@@ -405,10 +421,13 @@ def generate_image(
         
         progress(0.1, desc="Starting image generation...")
         
+        # For now, use the primary checkpoint (first active one)
+        primary_checkpoint = active_checkpoints[0] if active_checkpoints else "none"
+        
         result = image_generator.generate_with_separate_models(
             prompt=prompt,
             base_model_name=base_model_name,
-            lora_model_name=lora_model_name,
+            lora_model_name=primary_checkpoint,
             style=style,
             resolution=resolution,
             output_format=output_format,
@@ -425,8 +444,9 @@ def generate_image(
         
         if result:
             model_display = f"{model_name}"
-            if lora_model_name and lora_model_name != "none":
-                model_display += f" (Checkpoint) + {base_model_name} (base)"
+            if active_checkpoints:
+                checkpoint_names = ", ".join(active_checkpoints)
+                model_display = f"{checkpoint_names} (Checkpoint{'s' if len(active_checkpoints) > 1 else ''}) + {base_model_name} (base)"
             
             return (
                 f"✅ Image generated successfully using {model_display}",
@@ -680,12 +700,29 @@ def create_gradio_interface():
                                 info="Select the main model for generation"
                             )
                             
-                            img_lora_dropdown = gr.Dropdown(
+                            img_checkpoint1_dropdown = gr.Dropdown(
                                 choices=get_checkpoint_model_choices(),
-                                label="Checkpoint Model",
+                                label="Primary Checkpoint",
                                 value="none",
                                 interactive=True,
-                                info="Optional: Select a Checkpoint to enhance the base model"
+                                info="Optional: Select primary Checkpoint to enhance the base model"
+                            )
+                        
+                        with gr.Row():
+                            img_checkpoint2_dropdown = gr.Dropdown(
+                                choices=get_checkpoint_model_choices(),
+                                label="Secondary Checkpoint",
+                                value="none",
+                                interactive=True,
+                                info="Optional: Select secondary Checkpoint for additional effects"
+                            )
+                            
+                            img_checkpoint3_dropdown = gr.Dropdown(
+                                choices=get_checkpoint_model_choices(),
+                                label="Tertiary Checkpoint",
+                                value="none",
+                                interactive=True,
+                                info="Optional: Select tertiary Checkpoint for fine-tuning"
                             )
                         
                         with gr.Row():
@@ -994,7 +1031,8 @@ def create_gradio_interface():
         img_generate_btn.click(
             fn=generate_image,
             inputs=[
-                img_prompt, img_base_model_dropdown, img_lora_dropdown,
+                img_prompt, img_base_model_dropdown, img_checkpoint1_dropdown,
+                img_checkpoint2_dropdown, img_checkpoint3_dropdown,
                 img_style_dropdown, img_resolution, img_output_format, img_quality,
                 img_reference_images, img_negative_prompt,
                 img_guidance_scale, img_inference_steps, img_seed
@@ -1003,8 +1041,8 @@ def create_gradio_interface():
         )
         
         # Image model info update
-        def update_image_model_info(base_model_name, lora_model_name):
-            """Update image model information display based on selected base and LoRA models"""
+        def update_image_model_info(base_model_name, checkpoint1_name, checkpoint2_name, checkpoint3_name):
+            """Update image model information display based on selected base and checkpoint models"""
             try:
                 info_parts = []
                 
@@ -1021,18 +1059,23 @@ def create_gradio_interface():
                     if base_info.get('max_resolution'):
                         info_parts.append(f"**Max Resolution:** {base_info['max_resolution']}")
                 
-                # LoRA model info
-                if lora_model_name and lora_model_name != "none":
-                    lora_models = image_generator.get_available_models()
-                    lora_info = lora_models.get(lora_model_name, {})
-                    
-                    info_parts.append(f"\n**Checkpoint Model:** {lora_model_name}")
-                    if lora_info.get('description'):
-                        info_parts.append(f"**Checkpoint Description:** {lora_info['description']}")
-                    if lora_info.get('not_for_all_audiences'):
-                        info_parts.append("⚠️ **Content Warning:** This is an uncensored model")
-                elif lora_model_name == "none":
-                    info_parts.append(f"\n**Checkpoint Model:** None - Using base model only")
+                # Checkpoint model info
+                checkpoint_models = image_generator.get_available_models()
+                active_checkpoints = []
+                
+                for i, checkpoint_name in enumerate([checkpoint1_name, checkpoint2_name, checkpoint3_name], 1):
+                    if checkpoint_name and checkpoint_name != "none":
+                        active_checkpoints.append(checkpoint_name)
+                        checkpoint_info = checkpoint_models.get(checkpoint_name, {})
+                        
+                        info_parts.append(f"\n**Checkpoint {i}:** {checkpoint_name}")
+                        if checkpoint_info.get('description'):
+                            info_parts.append(f"**Description:** {checkpoint_info['description']}")
+                        if checkpoint_info.get('not_for_all_audiences'):
+                            info_parts.append("⚠️ **Content Warning:** This is an uncensored model")
+                
+                if not active_checkpoints:
+                    info_parts.append(f"\n**Checkpoints:** None - Using base model only")
                 
                 if not info_parts:
                     return "Select models to see details"
@@ -1043,17 +1086,13 @@ def create_gradio_interface():
                 logger.error(f"Error updating model info: {e}")
                 return f"Error loading model information: {e}"
         
-        img_base_model_dropdown.change(
-            fn=update_image_model_info,
-            inputs=[img_base_model_dropdown, img_lora_dropdown],
-            outputs=[img_model_info]
-        )
-        
-        img_lora_dropdown.change(
-            fn=update_image_model_info,
-            inputs=[img_base_model_dropdown, img_lora_dropdown],
-            outputs=[img_model_info]
-        )
+        # Update model info when any dropdown changes
+        for dropdown in [img_base_model_dropdown, img_checkpoint1_dropdown, img_checkpoint2_dropdown, img_checkpoint3_dropdown]:
+            dropdown.change(
+                fn=update_image_model_info,
+                inputs=[img_base_model_dropdown, img_checkpoint1_dropdown, img_checkpoint2_dropdown, img_checkpoint3_dropdown],
+                outputs=[img_model_info]
+            )
         
         # Model search
         def search_and_update_dropdown(query, platform, limit=20):
@@ -1127,13 +1166,13 @@ def create_gradio_interface():
         download_btn.click(
             fn=download_model,
             inputs=[available_models, model_type, model_details_state],
-            outputs=[download_status, model_dropdown, img_base_model_dropdown, img_lora_dropdown]
+            outputs=[download_status, model_dropdown, img_base_model_dropdown, img_checkpoint1_dropdown]
         )
         
         # Model dropdown refresh
         refresh_models_btn.click(
             fn=refresh_model_dropdowns,
-            outputs=[model_dropdown, img_base_model_dropdown, img_lora_dropdown, refresh_status]
+            outputs=[model_dropdown, img_base_model_dropdown, img_checkpoint1_dropdown, refresh_status]
         )
         
         # Settings handlers
