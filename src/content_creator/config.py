@@ -162,6 +162,12 @@ class Config:
     
     # Video Styles
     VIDEO_STYLES: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
+        "None": {
+            "description": "No specific style applied",
+            "style_prompt_suffix": "",
+            "negative_prompt": "low quality, blurry",
+            "guidance_scale": 7.5,
+        },
         "Realistic": {
             "description": "Photorealistic video generation",
             "style_prompt_suffix": ", photorealistic, cinematic, high quality, detailed",
@@ -173,6 +179,12 @@ class Config:
             "style_prompt_suffix": ", anime style, animated, cartoon, vibrant colors",
             "negative_prompt": "photorealistic, real photo, low quality, blurry",
             "guidance_scale": 9.0,
+        },
+        "Hentai": {
+            "description": "Hentai/adult anime style",
+            "style_prompt_suffix": ", hentai style, anime, detailed, high quality, nsfw",
+            "negative_prompt": "photorealistic, realistic, censored, low quality, blurry, ugly",
+            "guidance_scale": 9.5,
         },
         "Cinematic": {
             "description": "Movie-like cinematic style",
@@ -198,7 +210,7 @@ class Config:
             "negative_prompt": "mundane, ordinary, low quality, blurry",
             "guidance_scale": 9.5,
         },
-        "Custom": {
+        "Reference": {
             "description": "Style guided by reference images",
             "style_prompt_suffix": "",
             "negative_prompt": "low quality, blurry",
@@ -348,6 +360,58 @@ class Config:
     MAX_CONCURRENT_GENERATIONS: int = int(os.getenv("MAX_CONCURRENT_GENERATIONS", "1"))
     CLEANUP_TEMP_FILES: bool = os.getenv("CLEANUP_TEMP_FILES", "true").lower() == "true"
     AUTO_OPTIMIZE_SETTINGS: bool = os.getenv("AUTO_OPTIMIZE_SETTINGS", "true").lower() == "true"
+    
+    # Image Styles (specific for image generation)
+    IMAGE_STYLES: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
+        "None": {
+            "description": "No specific style applied",
+            "style_prompt_suffix": "",
+            "negative_prompt": "low quality, blurry",
+            "guidance_scale": 7.5,
+        },
+        "Realistic": {
+            "description": "Photorealistic image generation",
+            "style_prompt_suffix": ", photorealistic, detailed, high quality",
+            "negative_prompt": "cartoon, anime, painting, sketch, low quality, blurry",
+            "guidance_scale": 7.5,
+        },
+        "Anime": {
+            "description": "Anime/manga style",
+            "style_prompt_suffix": ", anime style, manga, vibrant colors, detailed",
+            "negative_prompt": "photorealistic, real photo, low quality, blurry",
+            "guidance_scale": 9.0,
+        },
+        "Hentai": {
+            "description": "Hentai/adult anime style",
+            "style_prompt_suffix": ", hentai style, anime, detailed, high quality, nsfw, uncensored",
+            "negative_prompt": "photorealistic, realistic, censored, low quality, blurry, ugly, bad anatomy",
+            "guidance_scale": 9.5,
+        },
+        "Artistic": {
+            "description": "Artistic and stylized",
+            "style_prompt_suffix": ", artistic, stylized, creative, masterpiece",
+            "negative_prompt": "boring, plain, low quality, blurry",
+            "guidance_scale": 8.5,
+        },
+        "Fantasy": {
+            "description": "Fantasy and magical themes",
+            "style_prompt_suffix": ", fantasy, magical, ethereal, mystical, detailed",
+            "negative_prompt": "mundane, ordinary, low quality, blurry",
+            "guidance_scale": 9.0,
+        },
+        "Digital Art": {
+            "description": "Digital artwork style",
+            "style_prompt_suffix": ", digital art, concept art, detailed, high resolution",
+            "negative_prompt": "traditional media, low quality, blurry",
+            "guidance_scale": 8.0,
+        },
+        "Portrait": {
+            "description": "Portrait photography style",
+            "style_prompt_suffix": ", portrait, professional photography, detailed face, high quality",
+            "negative_prompt": "full body, landscape, low quality, blurry",
+            "guidance_scale": 7.5,
+        }
+    })
     
     def __post_init__(self):
         """Create necessary directories"""

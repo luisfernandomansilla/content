@@ -71,6 +71,65 @@ def get_image_model_choices():
         return [("FLUX.1-schnell (default)", "FLUX.1-schnell")]
 
 
+def get_base_model_choices():
+    """Get list of available base models (non-LoRA) for dropdown"""
+    try:
+        models = image_generator.get_available_models()
+        base_models = []
+        
+        for name, info in models.items():
+            # Filter out LoRA models
+            model_type = info.get('type', '').lower()
+            is_lora = 'lora' in model_type or 'lora' in name.lower() or '(lora)' in name.lower()
+            
+            if not is_lora:
+                description = info.get('description', '')
+                memory = info.get('memory_requirement', 'Unknown')
+                max_res = info.get('max_resolution', 'Unknown')
+                
+                # Show warning for NSFW models
+                warning = ""
+                if info.get('not_for_all_audiences'):
+                    warning = " ⚠️"
+                
+                choice_text = f"{name}{warning} - {memory} - {max_res} - {description[:50]}..."
+                base_models.append((choice_text, name))
+        
+        return base_models if base_models else [("FLUX.1-schnell (default)", "FLUX.1-schnell")]
+    except Exception as e:
+        logger.error(f"Error getting base model choices: {e}")
+        return [("FLUX.1-schnell (default)", "FLUX.1-schnell")]
+
+
+def get_lora_model_choices():
+    """Get list of available LoRA models for dropdown"""
+    try:
+        models = image_generator.get_available_models()
+        lora_models = [("None - No LoRA", "none")]  # Add None option
+        
+        for name, info in models.items():
+            # Filter for LoRA models
+            model_type = info.get('type', '').lower()
+            is_lora = 'lora' in model_type or 'lora' in name.lower() or '(lora)' in name.lower()
+            
+            if is_lora:
+                description = info.get('description', '')
+                memory = info.get('memory_requirement', 'Unknown')
+                
+                # Show warning for NSFW models
+                warning = ""
+                if info.get('not_for_all_audiences'):
+                    warning = " ⚠️"
+                
+                choice_text = f"{name}{warning} - {memory} - {description[:50]}..."
+                lora_models.append((choice_text, name))
+        
+        return lora_models
+    except Exception as e:
+        logger.error(f"Error getting LoRA choices: {e}")
+        return [("None - No LoRA", "none")]
+
+
 def search_models(query: str, platform: str = "all", limit: int = 20):
     """Search for models across different platforms"""
     try:
@@ -160,15 +219,15 @@ def download_model(model_name: str, model_type: str, model_details: dict, progre
     """Download a model from Hugging Face or Civitai"""
     try:
         if not model_name:
-            return "Please select a model to download", gr.update(), gr.update()
+            return "Please select a model to download", gr.update(), gr.update(), gr.update()
         
         if not model_details:
-            return "No model details available. Please search for models first.", gr.update(), gr.update()
+            return "No model details available. Please search for models first.", gr.update(), gr.update(), gr.update()
         
         # Get model info from details
         model_info = model_details.get(model_name, {})
         if not model_info:
-            return f"Model details not found for {model_name}", gr.update(), gr.update()
+            return f"Model details not found for {model_name}", gr.update(), gr.update(), gr.update()
         
         actual_name = model_info.get('name', model_name)
         source = model_info.get('source', 'unknown')
@@ -200,37 +259,42 @@ def download_model(model_name: str, model_type: str, model_details: dict, progre
                 success_msg += f"\n📹 Model added to video generation options"
                 # Refresh video model dropdown
                 new_video_choices = get_model_choices()
-                return success_msg, gr.update(choices=new_video_choices), gr.update()
+                return success_msg, gr.update(choices=new_video_choices), gr.update(), gr.update()
             elif model_type == "image":
                 success_msg += f"\n🖼️ Model added to image generation options"
-                # Refresh image model dropdown
-                new_image_choices = get_image_model_choices()
-                return success_msg, gr.update(), gr.update(choices=new_image_choices)
+                # Refresh image model dropdowns
+                new_base_choices = get_base_model_choices()
+                new_lora_choices = get_lora_model_choices()
+                return success_msg, gr.update(), gr.update(choices=new_base_choices), gr.update(choices=new_lora_choices)
             
-            return success_msg, gr.update(), gr.update()
+            return success_msg, gr.update(), gr.update(), gr.update()
         else:
-            return f"❌ Failed to download {actual_name}", gr.update(), gr.update()
+            return f"❌ Failed to download {actual_name}", gr.update(), gr.update(), gr.update()
             
     except Exception as e:
         logger.error(f"Error downloading model: {e}")
-        return f"❌ Error downloading model: {e}", gr.update(), gr.update()
+        return f"❌ Error downloading model: {e}", gr.update(), gr.update(), gr.update()
 
 
 def refresh_model_dropdowns():
-    """Refresh both video and image model dropdowns"""
+    """Refresh all model dropdowns including base models and LoRAs"""
     try:
         video_choices = get_model_choices()
-        image_choices = get_image_model_choices()
+        base_model_choices = get_base_model_choices()
+        lora_choices = get_lora_model_choices()
+        
         return (
             gr.update(choices=video_choices),
-            gr.update(choices=image_choices),
+            gr.update(choices=base_model_choices),
+            gr.update(choices=lora_choices),
             "✅ Model lists refreshed successfully! New downloaded models should now be visible."
         )
     except Exception as e:
         logger.error(f"Error refreshing model dropdowns: {e}")
         return (
             gr.update(),
-            gr.update(), 
+            gr.update(),
+            gr.update(),
             f"❌ Error refreshing model lists: {e}"
         )
 
@@ -303,7 +367,8 @@ def generate_video(
 
 def generate_image(
     prompt: str,
-    model_name: str,
+    base_model_name: str,
+    lora_model_name: str,
     style: str,
     resolution: str,
     output_format: str,
@@ -315,39 +380,28 @@ def generate_image(
     seed: Optional[int] = None,
     progress=gr.Progress()
 ):
-    """Generate image with progress tracking"""
+    """Generate image with progress tracking and separate base/LoRA models"""
+    
     try:
-        if not prompt.strip():
-            return None, "Please enter a prompt"
-        
-        # Enhanced progress tracking
-        current_step = [0]
-        total_steps = 4  # Initialize, Download/Check, Process, Generate, Save
+        # Determine which model to use
+        if lora_model_name and lora_model_name != "none":
+            # Use LoRA model
+            model_name = lora_model_name
+            logger.info(f"Using LoRA model: {lora_model_name} with base: {base_model_name}")
+        else:
+            # Use base model only
+            model_name = base_model_name
+            logger.info(f"Using base model only: {base_model_name}")
         
         def progress_callback(msg):
-            if "Downloading" in msg or "searching" in msg:
-                current_step[0] = 1
-                progress(0.25, desc=msg)
-            elif "Processing" in msg:
-                current_step[0] = 2
-                progress(0.5, desc=msg)
-            elif "Generating" in msg:
-                current_step[0] = 3
-                progress(0.75, desc=msg)
-            elif "Saving" in msg:
-                current_step[0] = 4
-                progress(0.9, desc=msg)
-            else:
-                # Default progress based on current step
-                step_progress = current_step[0] / total_steps
-                progress(step_progress, desc=msg)
+            progress(0.5, desc=msg)
         
         progress(0.1, desc="Starting image generation...")
         
-        # Generate image
-        image_path = image_generator.generate(
+        result = image_generator.generate_with_separate_models(
             prompt=prompt,
-            model_name=model_name,
+            base_model_name=base_model_name,
+            lora_model_name=lora_model_name,
             style=style,
             resolution=resolution,
             output_format=output_format,
@@ -360,15 +414,23 @@ def generate_image(
             progress_callback=progress_callback
         )
         
-        if image_path:
-            progress(1.0, desc="Image generation completed!")
-            return image_path, f"✅ Image generated successfully: {Path(image_path).name}"
+        progress(1.0, desc="Image generation completed!")
+        
+        if result:
+            model_display = f"{model_name}"
+            if lora_model_name and lora_model_name != "none":
+                model_display += f" (LoRA) + {base_model_name} (base)"
+            
+            return (
+                f"✅ Image generated successfully using {model_display}",
+                result
+            )
         else:
-            return None, "❌ Failed to generate image"
+            return "❌ Failed to generate image", None
             
     except Exception as e:
         logger.error(f"Error generating image: {e}")
-        return None, f"❌ Error generating image: {e}"
+        return f"❌ Error generating image: {e}", None
 
 
 def get_hardware_info_display():
@@ -407,7 +469,8 @@ def create_gradio_interface():
     
     # Get initial choices
     model_choices = get_model_choices()
-    style_choices = [(f"{k} - {v['description']}", k) for k, v in config.VIDEO_STYLES.items()]
+    video_style_choices = [(f"{k} - {v['description']}", k) for k, v in config.VIDEO_STYLES.items()]
+    image_style_choices = [(f"{k} - {v['description']}", k) for k, v in config.IMAGE_STYLES.items()]
     resolution_choices = [(f"{k} ({v[0]}x{v[1]})", k) for k, v in config.RESOLUTIONS.items()]
     format_choices = [(f"{k} - {v['description']}", k) for k, v in config.OUTPUT_FORMATS.items()]
     quality_choices = [(f"{k} - {v['description']}", k) for k, v in config.QUALITY_PRESETS.items()]
@@ -470,7 +533,7 @@ def create_gradio_interface():
                             )
                             
                             style_dropdown = gr.Dropdown(
-                                choices=style_choices,
+                                choices=video_style_choices,
                                 label="Style",
                                 value=config.DEFAULT_STYLE,
                                 interactive=True
@@ -576,15 +639,25 @@ def create_gradio_interface():
                         )
                         
                         with gr.Row():
-                            img_model_dropdown = gr.Dropdown(
-                                choices=get_image_model_choices(),
-                                label="Image Model",
+                            img_base_model_dropdown = gr.Dropdown(
+                                choices=get_base_model_choices(),
+                                label="Base Model",
                                 value=config.DEFAULT_IMAGE_MODEL,
-                                interactive=True
+                                interactive=True,
+                                info="Select the main model for generation"
                             )
                             
+                            img_lora_dropdown = gr.Dropdown(
+                                choices=get_lora_model_choices(),
+                                label="LoRA Model",
+                                value="none",
+                                interactive=True,
+                                info="Optional: Select a LoRA to enhance the base model"
+                            )
+                        
+                        with gr.Row():
                             img_style_dropdown = gr.Dropdown(
-                                choices=style_choices,
+                                choices=image_style_choices,
                                 label="Style",
                                 value=config.DEFAULT_STYLE,
                                 interactive=True
@@ -888,8 +961,8 @@ def create_gradio_interface():
         img_generate_btn.click(
             fn=generate_image,
             inputs=[
-                img_prompt, img_model_dropdown, img_style_dropdown,
-                img_resolution, img_output_format, img_quality,
+                img_prompt, img_base_model_dropdown, img_lora_dropdown,
+                img_style_dropdown, img_resolution, img_output_format, img_quality,
                 img_reference_images, img_negative_prompt,
                 img_guidance_scale, img_inference_steps, img_seed
             ],
@@ -897,41 +970,55 @@ def create_gradio_interface():
         )
         
         # Image model info update
-        def update_image_model_info(model_name):
+        def update_image_model_info(base_model_name, lora_model_name):
+            """Update image model information display based on selected base and LoRA models"""
             try:
-                models = image_generator.get_available_models()
-                if model_name in models:
-                    info = models[model_name]
+                info_parts = []
+                
+                # Base model info
+                if base_model_name:
+                    base_models = image_generator.get_available_models()
+                    base_info = base_models.get(base_model_name, {})
                     
-                    # Build model info display
-                    info_text = f"""
-                    **Model:** {model_name}
+                    info_parts.append(f"**Base Model:** {base_model_name}")
+                    if base_info.get('description'):
+                        info_parts.append(f"**Description:** {base_info['description']}")
+                    if base_info.get('memory_requirement'):
+                        info_parts.append(f"**Memory:** {base_info['memory_requirement']}")
+                    if base_info.get('max_resolution'):
+                        info_parts.append(f"**Max Resolution:** {base_info['max_resolution']}")
+                
+                # LoRA model info
+                if lora_model_name and lora_model_name != "none":
+                    lora_models = image_generator.get_available_models()
+                    lora_info = lora_models.get(lora_model_name, {})
                     
-                    **Description:** {info.get('description', 'No description')}
-                    
-                    **Memory Requirement:** {info.get('memory_requirement', 'Unknown')}
-                    
-                    **Max Resolution:** {info.get('max_resolution', 'Unknown')}
-                    
-                    **Type:** {info.get('type', 'Unknown')}
-                    """
-                    
-                    if info.get('base_model'):
-                        info_text += f"\n**Base Model:** {info.get('base_model')}"
-                    
-                    if info.get('not_for_all_audiences'):
-                        info_text += "\n\n⚠️ **Content Warning:** This model may generate NSFW content."
-                    
-                    return info_text
-                else:
-                    return f"No information available for {model_name}"
-                    
+                    info_parts.append(f"\n**LoRA Model:** {lora_model_name}")
+                    if lora_info.get('description'):
+                        info_parts.append(f"**LoRA Description:** {lora_info['description']}")
+                    if lora_info.get('not_for_all_audiences'):
+                        info_parts.append("⚠️ **Content Warning:** This is an uncensored model")
+                elif lora_model_name == "none":
+                    info_parts.append(f"\n**LoRA Model:** None - Using base model only")
+                
+                if not info_parts:
+                    return "Select models to see details"
+                
+                return "\n".join(info_parts)
+                
             except Exception as e:
-                return f"Error loading model info: {e}"
+                logger.error(f"Error updating model info: {e}")
+                return f"Error loading model information: {e}"
         
-        img_model_dropdown.change(
+        img_base_model_dropdown.change(
             fn=update_image_model_info,
-            inputs=[img_model_dropdown],
+            inputs=[img_base_model_dropdown, img_lora_dropdown],
+            outputs=[img_model_info]
+        )
+        
+        img_lora_dropdown.change(
+            fn=update_image_model_info,
+            inputs=[img_base_model_dropdown, img_lora_dropdown],
             outputs=[img_model_info]
         )
         
@@ -1007,13 +1094,13 @@ def create_gradio_interface():
         download_btn.click(
             fn=download_model,
             inputs=[available_models, model_type, model_details_state],
-            outputs=[download_status, model_dropdown, img_model_dropdown]
+            outputs=[download_status, model_dropdown, img_base_model_dropdown, img_lora_dropdown]
         )
         
         # Model dropdown refresh
         refresh_models_btn.click(
             fn=refresh_model_dropdowns,
-            outputs=[model_dropdown, img_model_dropdown, refresh_status]
+            outputs=[model_dropdown, img_base_model_dropdown, img_lora_dropdown, refresh_status]
         )
         
         # Settings handlers

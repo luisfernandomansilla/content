@@ -1360,6 +1360,73 @@ class ImageGenerator:
         except Exception as e:
             logger.error(f"Error handling LoRA model {model_name}: {e}")
             return None
+    
+    def generate_with_separate_models(
+        self,
+        prompt: str,
+        base_model_name: str = None,
+        lora_model_name: str = None,
+        style: str = None,
+        resolution: str = None,
+        output_format: str = None,
+        quality: str = None,
+        reference_images: Optional[List[str]] = None,
+        negative_prompt: str = "",
+        guidance_scale: float = 7.5,
+        num_inference_steps: int = 28,
+        seed: Optional[int] = None,
+        progress_callback: Optional[callable] = None
+    ) -> Optional[str]:
+        """Generate an image with separate base model and LoRA selection
+        
+        Args:
+            prompt: Text prompt for image generation
+            base_model_name: Name of the base model to use
+            lora_model_name: Name of the LoRA model to use (or "none")
+            style: Image style
+            resolution: Image resolution
+            output_format: Output image format
+            quality: Quality preset
+            reference_images: List of reference image paths
+            negative_prompt: Negative prompt
+            guidance_scale: Guidance scale for generation
+            num_inference_steps: Number of inference steps
+            seed: Random seed for reproducibility
+            progress_callback: Optional callback for progress updates
+            
+        Returns:
+            Path to generated image or None if failed
+        """
+        try:
+            # Determine which model to use for generation
+            if lora_model_name and lora_model_name != "none":
+                # Use LoRA model
+                model_name = lora_model_name
+                logger.info(f"Using LoRA model: {lora_model_name} with base: {base_model_name}")
+            else:
+                # Use base model only
+                model_name = base_model_name
+                logger.info(f"Using base model only: {base_model_name}")
+            
+            # Call the original generate method
+            return self.generate(
+                prompt=prompt,
+                model_name=model_name,
+                style=style,
+                resolution=resolution,
+                output_format=output_format,
+                quality=quality,
+                reference_images=reference_images,
+                negative_prompt=negative_prompt,
+                guidance_scale=guidance_scale,
+                num_inference_steps=num_inference_steps,
+                seed=seed,
+                progress_callback=progress_callback
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in generate_with_separate_models: {e}")
+            return None
 
 
 # Global image generator instance
