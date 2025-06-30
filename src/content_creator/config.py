@@ -80,6 +80,15 @@ class Config:
     
     # Image Generation Models - List of available models for image generation
     SUPPORTED_IMAGE_MODELS: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
+        "Recomended.NSFW": {
+            "model_id": "Heartsync/Flux-NSFW-uncensored",   
+            "type": "flux",
+            "description": "High-quality text-to-image generation with Flux-NSFW-uncensored",
+            "memory_requirement": "12GB",
+            "supports_text_prompt": True,
+            "supports_image_input": False,
+            "max_resolution": "2048x2048",
+        },
         "Flux-NSFW-uncensored": {
             "model_id": "Heartsync/Flux-NSFW-uncensored",
             "base_model": "black-forest-labs/FLUX.1-dev",

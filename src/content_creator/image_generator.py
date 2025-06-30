@@ -1408,7 +1408,7 @@ class ImageGenerator:
         if hardware_type == "apple_silicon":
             return ["FLUX.1-schnell", "Stable Diffusion 2.1", "DreamShaper"]
         elif hardware_type == "nvidia_gpu":
-            return ["Flux-NSFW-uncensored", "FLUX.1-dev", "Stable Diffusion XL"]
+            return ["Recomended.NSFW", "Flux-NSFW-uncensored", "FLUX.1-dev", "Stable Diffusion XL"]
         else:
             return ["Stable Diffusion 2.1", "DreamShaper"]
     
