@@ -5,6 +5,13 @@ import os
 from typing import Dict, List, Tuple, Any
 from dataclasses import dataclass, field
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed
+
 
 @dataclass
 class Config:
@@ -68,8 +75,8 @@ class Config:
         }
     })
     
-    # Default model selection
-    DEFAULT_MODEL: str = "AnimateDiff"
+    # Default model selection (configurable via environment)
+    DEFAULT_MODEL: str = os.getenv("DEFAULT_VIDEO_MODEL", "AnimateDiff")
     
     # Image Generation Models - List of available models for image generation
     SUPPORTED_IMAGE_MODELS: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
@@ -150,8 +157,8 @@ class Config:
         }
     })
     
-    # Default image model
-    DEFAULT_IMAGE_MODEL: str = "Stable Diffusion XL"
+    # Default image model (configurable via environment)
+    DEFAULT_IMAGE_MODEL: str = os.getenv("DEFAULT_IMAGE_MODEL", "Stable Diffusion XL")
     
     # Video Styles
     VIDEO_STYLES: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
@@ -214,8 +221,8 @@ class Config:
         "Widescreen": (2560, 1080),
     })
     
-    # Default resolution
-    DEFAULT_RESOLUTION: str = "720p"
+    # Default resolution (configurable via environment)
+    DEFAULT_RESOLUTION: str = os.getenv("DEFAULT_RESOLUTION", "720p")
     
     # Video Output Formats
     OUTPUT_FORMATS: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
@@ -298,8 +305,8 @@ class Config:
         }
     })
     
-    # Default quality
-    DEFAULT_QUALITY: str = "Balanced"
+    # Default quality (configurable via environment)
+    DEFAULT_QUALITY: str = os.getenv("DEFAULT_QUALITY", "Balanced")
     
     # Hardware-specific settings
     HARDWARE_CONFIGS: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
@@ -326,21 +333,21 @@ class Config:
         }
     })
     
-    # File and directory settings
-    OUTPUT_DIR: str = "outputs"
-    TEMP_DIR: str = "temp"
-    MODEL_CACHE_DIR: str = "models"  # Local models directory within repo
+    # File and directory settings (configurable via environment)
+    OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "outputs")
+    TEMP_DIR: str = os.getenv("TEMP_DIR", "temp")
+    MODEL_CACHE_DIR: str = os.getenv("CACHE_DIR", "models")  # Local models directory within repo
     
-    # UI Settings
-    GRADIO_THEME: str = "soft"
-    GRADIO_PORT: int = 7860
-    GRADIO_HOST: str = "127.0.0.1"
-    GRADIO_SHARE: bool = False
+    # UI Settings (configurable via environment variables)
+    GRADIO_THEME: str = os.getenv("GRADIO_THEME", "soft")
+    GRADIO_PORT: int = int(os.getenv("PORT", "80" if os.getenv("ENVIRONMENT") == "production" else "7860"))
+    GRADIO_HOST: str = os.getenv("HOST", "0.0.0.0" if os.getenv("ENVIRONMENT") == "production" else "127.0.0.1")
+    GRADIO_SHARE: bool = os.getenv("GRADIO_SHARE", "false").lower() == "true"
     
-    # Performance settings
-    MAX_CONCURRENT_GENERATIONS: int = 1
-    CLEANUP_TEMP_FILES: bool = True
-    AUTO_OPTIMIZE_SETTINGS: bool = True
+    # Performance settings (configurable via environment)
+    MAX_CONCURRENT_GENERATIONS: int = int(os.getenv("MAX_CONCURRENT_GENERATIONS", "1"))
+    CLEANUP_TEMP_FILES: bool = os.getenv("CLEANUP_TEMP_FILES", "true").lower() == "true"
+    AUTO_OPTIMIZE_SETTINGS: bool = os.getenv("AUTO_OPTIMIZE_SETTINGS", "true").lower() == "true"
     
     def __post_init__(self):
         """Create necessary directories"""

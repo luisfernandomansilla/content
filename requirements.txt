@@ -19,6 +19,9 @@ safetensors>=0.4.0
 huggingface-hub>=0.17.0
 peft>=0.6.0
 
+# Environment configuration
+python-dotenv>=1.0.0
+
 # Optional performance optimizations
 # xformers requires compilation and may fail on macOS - install manually if needed:
 # pip install xformers --index-url https://download.pytorch.org/whl/cpu

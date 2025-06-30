@@ -69,6 +69,94 @@ If you prefer using pip:
 pip install -r requirements.txt
 ```
 
+## Configuration
+
+### Environment Variables
+
+Content Creator supports configuration through environment variables. Create a `.env` file in the root directory to customize settings:
+
+```bash
+# Copy example configuration
+cp .env.example .env
+```
+
+**Environment Variables:**
+
+#### Application Settings
+```bash
+ENVIRONMENT=development          # Options: development, production
+DEBUG=true                      # Enable debug logging
+```
+
+#### Server Configuration
+```bash
+# Development (default)
+HOST=127.0.0.1
+PORT=7860
+
+# Production
+HOST=0.0.0.0
+PORT=80
+```
+
+#### API Tokens
+```bash
+HF_TOKEN=your_huggingface_token_here
+CIVITAI_API_TOKEN=your_civitai_token_here
+```
+
+#### Model Defaults
+```bash
+DEFAULT_IMAGE_MODEL=Stable Diffusion XL
+DEFAULT_VIDEO_MODEL=AnimateDiff
+DEFAULT_QUALITY=Balanced
+DEFAULT_RESOLUTION=720p
+```
+
+#### Directories
+```bash
+OUTPUT_DIR=outputs              # Generated content output
+TEMP_DIR=temp                   # Temporary files
+CACHE_DIR=models                # Model cache location
+```
+
+#### Performance
+```bash
+MAX_CONCURRENT_GENERATIONS=1    # Concurrent generation limit
+CLEANUP_TEMP_FILES=true         # Auto-cleanup temporary files
+AUTO_OPTIMIZE_SETTINGS=true     # Hardware-based optimization
+```
+
+#### UI Customization
+```bash
+GRADIO_THEME=soft              # UI theme (soft, default, etc.)
+GRADIO_SHARE=false             # Public sharing via Gradio
+```
+
+### Production Deployment
+
+For production deployment, set these environment variables:
+
+```bash
+ENVIRONMENT=production
+HOST=0.0.0.0
+PORT=80
+DEBUG=false
+GRADIO_SHARE=false
+CLEANUP_TEMP_FILES=true
+HF_TOKEN=your_real_token_here
+```
+
+**Docker Deployment Example:**
+```bash
+docker run -p 80:80 \
+  -e ENVIRONMENT=production \
+  -e HOST=0.0.0.0 \
+  -e PORT=80 \
+  -e HF_TOKEN=your_token \
+  content-creator
+```
+
 ## Usage
 
 ### Web Interface
