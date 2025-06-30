@@ -1121,6 +1121,81 @@ def create_gradio_interface():
                             value="Ready",
                             interactive=False
                         )
+            
+            # Gallery Tab
+            with gr.Tab("🖼️ Galería"):
+                gr.HTML("<h3>📁 Archivos Generados</h3>")
+                
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        # Gallery display
+                        gallery = gr.Gallery(
+                            label="Imágenes y Videos Generados",
+                            value=get_gallery_files(),
+                            columns=3,
+                            rows=3,
+                            height="600px",
+                            object_fit="contain",
+                            show_download_button=True,
+                            show_share_button=False,
+                            interactive=False
+                        )
+                    
+                    with gr.Column(scale=1):
+                        # Gallery controls
+                        gr.HTML("<h4>🎛️ Controles</h4>")
+                        
+                        gallery_info = gr.Markdown(
+                            value=get_gallery_info(),
+                            elem_classes=["model-info"]
+                        )
+                        
+                        refresh_gallery_btn = gr.Button(
+                            "🔄 Refrescar Galería",
+                            variant="secondary",
+                            size="sm"
+                        )
+                        
+                        clear_gallery_btn = gr.Button(
+                            "🗑️ Limpiar Galería",
+                            variant="secondary",
+                            size="sm"
+                        )
+                        
+                        gallery_status = gr.Textbox(
+                            label="Estado",
+                            value="Galería lista",
+                            interactive=False,
+                            lines=2
+                        )
+                        
+                        # File selection for deletion
+                        gr.HTML("<h4>🗂️ Gestión de Archivos</h4>")
+                        
+                        selected_file = gr.Textbox(
+                            label="Archivo Seleccionado",
+                            placeholder="Haz click en una imagen para seleccionarla",
+                            interactive=True
+                        )
+                        
+                        delete_selected_btn = gr.Button(
+                            "🗑️ Eliminar Seleccionado",
+                            variant="secondary",
+                            size="sm"
+                        )
+                        
+                        # Tips
+                        gr.HTML("""
+                        <div style="background-color: #e7f3ff; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                            <h5>💡 Consejos:</h5>
+                            <ul>
+                                <li>Haz click en cualquier imagen para descargarla</li>
+                                <li>Los archivos más recientes aparecen primero</li>
+                                <li>Puedes eliminar archivos individuales o toda la galería</li>
+                                <li>La galería se actualiza automáticamente al generar nuevos archivos</li>
+                            </ul>
+                        </div>
+                        """)
         
         # State variables for model search
         model_details_state = gr.State({})
@@ -1375,6 +1450,38 @@ def create_gradio_interface():
         clear_cache_btn.click(
             fn=clear_cache,
             outputs=[cache_status]
+        )
+        
+        # Gallery event handlers
+        refresh_gallery_btn.click(
+            fn=lambda: (get_gallery_files(), get_gallery_info()),
+            outputs=[gallery, gallery_info]
+        )
+        
+        clear_gallery_btn.click(
+            fn=clear_gallery,
+            outputs=[gallery_status, gallery, gallery_info]
+        )
+        
+        delete_selected_btn.click(
+            fn=delete_file,
+            inputs=[selected_file],
+            outputs=[gallery_status, gallery, gallery_info]
+        )
+        
+        # Auto-refresh gallery when new images/videos are generated  
+        def auto_refresh_gallery():
+            return get_gallery_files(), get_gallery_info()
+            
+        # Add separate events for gallery refresh after generation
+        img_status_text.change(
+            fn=auto_refresh_gallery,
+            outputs=[gallery, gallery_info]
+        )
+        
+        status_text.change(
+            fn=auto_refresh_gallery,
+            outputs=[gallery, gallery_info]
         )
         
         # Load initial cache info
