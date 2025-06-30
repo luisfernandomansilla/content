@@ -383,15 +383,22 @@ def generate_image(
     """Generate image with progress tracking and separate base/LoRA models"""
     
     try:
+        # Debug logging
+        logger.info(f"🎯 Generation request received:")
+        logger.info(f"   Base model: '{base_model_name}'")
+        logger.info(f"   LoRA model: '{lora_model_name}'")
+        logger.info(f"   Style: '{style}'")
+        logger.info(f"   Prompt: '{prompt[:50]}...'")
+        
         # Determine which model to use
         if lora_model_name and lora_model_name != "none":
             # Use LoRA model
             model_name = lora_model_name
-            logger.info(f"Using LoRA model: {lora_model_name} with base: {base_model_name}")
+            logger.info(f"✅ Using LoRA model: {lora_model_name} with base: {base_model_name}")
         else:
             # Use base model only
             model_name = base_model_name
-            logger.info(f"Using base model only: {base_model_name}")
+            logger.info(f"✅ Using base model only: {base_model_name}")
         
         def progress_callback(msg):
             progress(0.5, desc=msg)
@@ -429,7 +436,7 @@ def generate_image(
             return "❌ Failed to generate image", None
             
     except Exception as e:
-        logger.error(f"Error generating image: {e}")
+        logger.error(f"❌ Error generating image: {e}")
         return f"❌ Error generating image: {e}", None
 
 
@@ -462,6 +469,32 @@ def get_hardware_info_display():
     except Exception as e:
         logger.error(f"Error getting hardware info: {e}")
         return "Error getting hardware information"
+
+
+def get_default_base_model():
+    """Get the default base model, ensuring it exists in available models"""
+    try:
+        # First try the configured default
+        base_choices = get_base_model_choices()
+        
+        # Check if the configured default exists in the choices
+        for display, value in base_choices:
+            if value == config.DEFAULT_IMAGE_MODEL:
+                return config.DEFAULT_IMAGE_MODEL
+        
+        # If configured default not found, return the first non-NSFW model
+        for display, value in base_choices:
+            if "nsfw" not in value.lower() and "uncensored" not in value.lower():
+                return value
+        
+        # Fallback to first model in list
+        if base_choices:
+            return base_choices[0][1]
+        
+        return "FLUX.1-schnell"  # Final fallback
+    except Exception as e:
+        logger.error(f"Error getting default base model: {e}")
+        return "FLUX.1-schnell"
 
 
 def create_gradio_interface():
@@ -642,7 +675,7 @@ def create_gradio_interface():
                             img_base_model_dropdown = gr.Dropdown(
                                 choices=get_base_model_choices(),
                                 label="Base Model",
-                                value=config.DEFAULT_IMAGE_MODEL,
+                                value=get_default_base_model(),
                                 interactive=True,
                                 info="Select the main model for generation"
                             )

@@ -75,7 +75,8 @@ class ImageGenerator:
         guidance_scale: float = 7.5,
         num_inference_steps: int = 28,
         seed: Optional[int] = None,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        preferred_base_model: str = None
     ) -> Optional[str]:
         """Generate an image from the given parameters
         
@@ -92,6 +93,7 @@ class ImageGenerator:
             num_inference_steps: Number of inference steps
             seed: Random seed for reproducibility
             progress_callback: Optional callback for progress updates
+            preferred_base_model: Preferred base model for LoRA
             
         Returns:
             Path to generated image or None if failed
@@ -177,7 +179,8 @@ class ImageGenerator:
                 guidance_scale=guidance_scale,
                 num_inference_steps=num_inference_steps,
                 seed=seed,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                preferred_base_model=preferred_base_model
             )
             
             if not generated_image:
@@ -444,28 +447,25 @@ class ImageGenerator:
         guidance_scale: float,
         num_inference_steps: int,
         seed: Optional[int],
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        preferred_base_model: str = None
     ) -> Optional[Image.Image]:
-        """Generate image using the specified model"""
+        """Generate an image using the specified model and parameters"""
         try:
-            # Check if torch is available
-            if not TORCH_AVAILABLE:
-                logger.warning("PyTorch not available, using placeholder image")
-                if progress_callback:
-                    progress_callback("PyTorch not available, generating placeholder...")
-                width, height = config.get_validated_resolution(resolution)
-                return self._create_placeholder_image(width, height, prompt, model_name)
+            if progress_callback:
+                progress_callback(f"Preparing generation with {model_name}...")
             
-            # Get hardware optimizations
-            optimizations = self.hardware_detector.optimize_for_generation(
-                model_name, resolution, 1  # duration=1 for images
-            )
-            
-            # Get style info
-            style_info = config.get_style_info(style)
+            # Get style information
+            style_info = config.IMAGE_STYLES.get(style, config.IMAGE_STYLES.get("None", {}))
             
             # Get quality settings
             quality_settings = config.get_quality_settings(quality)
+            if quality_settings:
+                # Override inference steps and guidance scale from quality settings if they're defaults
+                if num_inference_steps == 28:  # Default value
+                    num_inference_steps = quality_settings.get('inference_steps', num_inference_steps)
+                if guidance_scale == 7.5:  # Default value
+                    guidance_scale = quality_settings.get('guidance_scale', guidance_scale)
             
             # Get resolution (validated for the specific model)
             width, height = config.get_validated_resolution_for_model(resolution, model_name)
@@ -477,7 +477,7 @@ class ImageGenerator:
                 progress_callback(f"Loading model {model_name}...")
             
             # Load the appropriate pipeline based on model type (with caching)
-            pipeline = self._get_or_load_pipeline(model_name, model_info, progress_callback)
+            pipeline = self._get_or_load_pipeline(model_name, model_info, progress_callback, preferred_base_model)
             
             if not pipeline:
                 logger.error(f"Failed to load pipeline for {model_name}")
@@ -536,12 +536,13 @@ class ImageGenerator:
         self,
         model_name: str,
         model_info: Dict[str, Any],
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        preferred_base_model: str = None
     ):
         """Get cached pipeline or load new one"""
         # Special handling for LoRA models
         if model_info.get('type') == 'lora':
-            return self._handle_local_lora_model(model_name, model_info, progress_callback)
+            return self._handle_local_lora_model(model_name, model_info, progress_callback, preferred_base_model)
         
         # Check if we have this model cached
         cache_key = f"{model_name}_{model_info.get('model_id', model_name)}"
@@ -569,11 +570,11 @@ class ImageGenerator:
             
         return pipeline
     
-    def _handle_local_lora_model(self, model_name: str, model_info: Dict[str, Any], progress_callback: Optional[callable] = None):
-        """Handle local LoRA model by loading it with a compatible base model"""
+    def _handle_local_lora_model(self, model_name: str, model_info: Dict[str, Any], progress_callback: Optional[callable] = None, preferred_base_model: str = None):
+        """Handle local LoRA model loading with user-selected base model"""
         try:
             if progress_callback:
-                progress_callback(f"LoRA detected: {model_name}, finding base model...")
+                progress_callback(f"Loading LoRA model: {model_name}...")
             
             # Get compatible base models
             from .models.model_manager import model_manager
@@ -585,8 +586,16 @@ class ImageGenerator:
                     progress_callback(f"Error: No compatible base models for LoRA {model_name}")
                 return None
             
-            # Use the first compatible base model
-            base_model_name = base_models[0]
+            # Use the user-selected base model if it's compatible, otherwise use the first compatible one
+            base_model_name = None
+            if preferred_base_model and preferred_base_model in base_models:
+                base_model_name = preferred_base_model
+                logger.info(f"✅ Using user-selected base model: {preferred_base_model} for LoRA: {model_name}")
+            else:
+                # Fallback to first compatible base model
+                base_model_name = base_models[0]
+                logger.warning(f"⚠️ User-selected base model '{preferred_base_model}' not compatible with LoRA {model_name}")
+                logger.info(f"📋 Using first compatible base model: {base_model_name}")
             
             if progress_callback:
                 progress_callback(f"Using base model: {base_model_name} with LoRA: {model_name}")
@@ -1294,7 +1303,7 @@ class ImageGenerator:
         cache_key = f"{model_name}_{model_info.get('model_id', model_name)}"
         return cache_key in self._pipeline_cache
     
-    def _handle_lora_model(self, model_name: str, model_info: Dict[str, Any], progress_callback: Optional[callable] = None):
+    def _handle_lora_model(self, model_name: str, model_info: Dict[str, Any], progress_callback: Optional[callable] = None, preferred_base_model: str = None):
         """Handle LoRA model loading by finding a compatible base model"""
         try:
             if progress_callback:
@@ -1308,8 +1317,16 @@ class ImageGenerator:
                 logger.error(f"No compatible base models found for LoRA: {model_name}")
                 return None
             
-            # Use the first compatible base model
-            base_model_name = base_models[0]
+            # Use the user-selected base model if it's compatible, otherwise use the first compatible one
+            base_model_name = None
+            if preferred_base_model and preferred_base_model in base_models:
+                base_model_name = preferred_base_model
+                logger.info(f"✅ Using user-selected base model: {preferred_base_model} for LoRA: {model_name}")
+            else:
+                # Fallback to first compatible base model
+                base_model_name = base_models[0]
+                logger.warning(f"⚠️ User-selected base model '{preferred_base_model}' not compatible with LoRA {model_name}")
+                logger.info(f"📋 Using first compatible base model: {base_model_name}")
             
             if progress_callback:
                 progress_callback(f"Using base model: {base_model_name} with LoRA: {model_name}")
@@ -1398,20 +1415,39 @@ class ImageGenerator:
             Path to generated image or None if failed
         """
         try:
+            # Debug logging
+            logger.info(f"🔧 generate_with_separate_models called:")
+            logger.info(f"   base_model_name: '{base_model_name}'")
+            logger.info(f"   lora_model_name: '{lora_model_name}'")
+            
+            # Validate inputs
+            if not base_model_name:
+                logger.error("❌ No base model specified")
+                return None
+            
             # Determine which model to use for generation
             if lora_model_name and lora_model_name != "none":
-                # Use LoRA model
-                model_name = lora_model_name
-                logger.info(f"Using LoRA model: {lora_model_name} with base: {base_model_name}")
+                # Use LoRA model as primary
+                primary_model = lora_model_name
+                logger.info(f"🎨 Using LoRA model: {lora_model_name} with base: {base_model_name}")
+                
+                # TODO: In the future, we could implement actual LoRA combination here
+                # For now, we'll use the LoRA model if it exists, otherwise fall back to base
+                available_models = self.get_available_models()
+                if primary_model not in available_models:
+                    logger.warning(f"⚠️ LoRA model '{primary_model}' not found, using base model: {base_model_name}")
+                    primary_model = base_model_name
             else:
                 # Use base model only
-                model_name = base_model_name
-                logger.info(f"Using base model only: {base_model_name}")
+                primary_model = base_model_name
+                logger.info(f"🖼️ Using base model only: {base_model_name}")
             
-            # Call the original generate method
+            logger.info(f"🎯 Final model selection: '{primary_model}'")
+            
+            # Call the original generate method with the selected model
             return self.generate(
                 prompt=prompt,
-                model_name=model_name,
+                model_name=primary_model,
                 style=style,
                 resolution=resolution,
                 output_format=output_format,
@@ -1421,11 +1457,12 @@ class ImageGenerator:
                 guidance_scale=guidance_scale,
                 num_inference_steps=num_inference_steps,
                 seed=seed,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                preferred_base_model=base_model_name
             )
             
         except Exception as e:
-            logger.error(f"Error in generate_with_separate_models: {e}")
+            logger.error(f"❌ Error in generate_with_separate_models: {e}")
             return None
 
 
