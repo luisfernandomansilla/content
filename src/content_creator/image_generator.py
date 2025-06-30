@@ -342,35 +342,70 @@ class ImageGenerator:
     def _is_image_model_available(self, model_name: str) -> bool:
         """Check if image model is available locally"""
         try:
-            if model_name not in config.SUPPORTED_IMAGE_MODELS:
+            # First check if we can get model info (this includes downloaded models)
+            model_info = self._get_image_model_info(model_name)
+            if not model_info:
                 return False
             
-            model_info = config.SUPPORTED_IMAGE_MODELS[model_name]
-            model_id = model_info.get('model_id', model_name)
+            # If it's a local file (like LoRA), check if the file exists
+            if model_info.get('source') == 'local_file':
+                model_path = model_info.get('path')
+                if model_path:
+                    from pathlib import Path
+                    if Path(model_path).exists():
+                        logger.info(f"✅ Local model file found: {model_path}")
+                        return True
+                    else:
+                        logger.warning(f"❌ Local model file not found: {model_path}")
+                        return False
             
-            # Try to check if model is cached locally
-            try:
-                from huggingface_hub import cached_assets_path
-                from pathlib import Path
+            # If it's a built-in supported model, check HuggingFace cache
+            if model_name in config.SUPPORTED_IMAGE_MODELS:
+                model_id = model_info.get('model_id', model_name)
                 
-                # Check if model files exist in cache
-                cache_path = cached_assets_path(library_name="diffusers", namespace="models--" + model_id.replace('/', '--'))
-                
-                if cache_path and Path(cache_path).exists():
-                    # Check for some essential files
-                    essential_files = ["model_index.json", "config.json"]
-                    for file in essential_files:
-                        if any(Path(cache_path).rglob(file)):
-                            return True
-                
-                return False
-                
-            except ImportError:
-                # If huggingface_hub is not available, assume not available
-                return False
+                # Try to check if model is cached locally
+                try:
+                    from huggingface_hub import cached_assets_path
+                    from pathlib import Path
+                    
+                    # Check if model files exist in cache
+                    cache_path = cached_assets_path(library_name="diffusers", namespace="models--" + model_id.replace('/', '--'))
+                    
+                    if cache_path and Path(cache_path).exists():
+                        # Check for some essential files
+                        essential_files = ["model_index.json", "config.json"]
+                        for file in essential_files:
+                            if any(Path(cache_path).rglob(file)):
+                                logger.info(f"✅ HuggingFace cached model found: {model_id}")
+                                return True
+                    
+                    logger.info(f"❌ HuggingFace model not cached: {model_id}")
+                    return False
+                    
+                except ImportError:
+                    # If huggingface_hub is not available, assume not available
+                    logger.warning("❌ huggingface_hub not available, assuming model not cached")
+                    return False
+            
+            # If it's a downloaded HuggingFace model, check if it's in our downloaded models
+            if model_info.get('source') in ['huggingface_downloaded', 'downloaded']:
+                # Check if model directory exists
+                model_path = model_info.get('path')
+                if model_path:
+                    from pathlib import Path
+                    if Path(model_path).exists():
+                        logger.info(f"✅ Downloaded HuggingFace model found: {model_path}")
+                        return True
+                    else:
+                        logger.warning(f"❌ Downloaded HuggingFace model path not found: {model_path}")
+                        return False
+            
+            # Default: not available
+            logger.warning(f"❌ Model not available locally: {model_name}")
+            return False
                 
         except Exception as e:
-            logger.debug(f"Error checking model availability: {e}")
+            logger.debug(f"Error checking model availability for {model_name}: {e}")
             return False
     
     def _download_image_model(
