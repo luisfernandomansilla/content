@@ -237,13 +237,90 @@ class ImageGenerator:
     
     def _get_image_model_info(self, model_name: str) -> Optional[Dict[str, Any]]:
         """Get image model information"""
+        # First check supported image models
         if model_name in config.SUPPORTED_IMAGE_MODELS:
             return {
                 'name': model_name,
                 'source': 'default',
                 **config.SUPPORTED_IMAGE_MODELS[model_name]
             }
+        
+        # Then check downloaded models from model manager
+        available_models = self.model_manager.get_available_models(include_online=False)
+        
+        # Direct name match
+        if model_name in available_models:
+            return available_models[model_name]
+        
+        # Try name normalization for LoRA models - handle common variations
+        normalized_variations = self._get_model_name_variations(model_name)
+        
+        for variation in normalized_variations:
+            if variation in available_models:
+                logger.info(f"✅ Found model using name variation: '{variation}' for requested '{model_name}'")
+                return available_models[variation]
+        
+        # Search by partial name match for LoRA models
+        for available_name, model_info in available_models.items():
+            # Check if it's likely the same model (case-insensitive partial match)
+            if self._is_likely_same_model(model_name, available_name):
+                logger.info(f"✅ Found model by partial match: '{available_name}' for requested '{model_name}'")
+                return model_info
+        
         return None
+    
+    def _get_model_name_variations(self, model_name: str) -> List[str]:
+        """Generate common name variations for model lookup"""
+        variations = [model_name]
+        
+        # Handle common LoRA naming patterns
+        base_name = model_name
+        
+        # Remove common suffixes
+        if base_name.endswith(" (LoRA)"):
+            base_name = base_name[:-7]
+            variations.append(base_name)
+        
+        if base_name.endswith("(LoRA)"):
+            base_name = base_name[:-6]
+            variations.append(base_name)
+        
+        # Handle underscore vs space vs dash variations
+        underscore_version = base_name.replace(" ", "_").replace("-", "_")
+        space_version = base_name.replace("_", " ").replace("-", " ")
+        dash_version = base_name.replace("_", "-").replace(" ", "-")
+        
+        variations.extend([underscore_version, space_version, dash_version])
+        
+        # Handle common patterns in Civitai model names
+        if "_-_" in base_name:
+            variations.append(base_name.replace("_-_", " - "))
+        if " - " in base_name:
+            variations.append(base_name.replace(" - ", "_-_"))
+        
+        # Remove duplicates while preserving order
+        unique_variations = []
+        for var in variations:
+            if var not in unique_variations:
+                unique_variations.append(var)
+        
+        return unique_variations
+    
+    def _is_likely_same_model(self, requested_name: str, available_name: str) -> bool:
+        """Check if two model names likely refer to the same model"""
+        # Normalize both names for comparison
+        def normalize_for_comparison(name: str) -> str:
+            return name.lower().replace("_", "").replace("-", "").replace(" ", "").replace("(lora)", "")
+        
+        normalized_requested = normalize_for_comparison(requested_name)
+        normalized_available = normalize_for_comparison(available_name)
+        
+        # Check if one contains the other (for partial matches)
+        if len(normalized_requested) > 5 and len(normalized_available) > 5:
+            return (normalized_requested in normalized_available or 
+                    normalized_available in normalized_requested)
+        
+        return False
     
     def _search_image_models(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Search for image models (placeholder - could extend to search HF)"""
