@@ -913,6 +913,13 @@ def create_gradio_interface():
 
 
 if __name__ == "__main__":
+    # Log configuration info
+    config_summary = config.get_config_summary()
+    logger.info(f"Starting Content Creator in {config_summary['environment']} mode")
+    logger.info(f"Server will run on {config_summary['server']['host']}:{config_summary['server']['port']}")
+    logger.info(f"Debug mode: {config_summary['debug']}")
+    logger.info(f"Tokens configured - HF: {config_summary['api_tokens']['hf_token_set']}, Civitai: {config_summary['api_tokens']['civitai_token_set']}")
+    
     # Create and launch the interface
     interface = create_gradio_interface()
     

@@ -386,6 +386,39 @@ class Config:
         """Get resolution with validation that dimensions are divisible by 8"""
         width, height = self.get_resolution(resolution_name)
         return self.validate_resolution(width, height)
+    
+    def get_config_summary(self) -> Dict[str, Any]:
+        """Get a summary of current configuration for debugging"""
+        return {
+            "environment": os.getenv("ENVIRONMENT", "development"),
+            "debug": os.getenv("DEBUG", "false").lower() == "true",
+            "server": {
+                "host": self.GRADIO_HOST,
+                "port": self.GRADIO_PORT,
+                "share": self.GRADIO_SHARE,
+                "theme": self.GRADIO_THEME
+            },
+            "models": {
+                "default_image": self.DEFAULT_IMAGE_MODEL,
+                "default_video": self.DEFAULT_MODEL,
+                "default_quality": self.DEFAULT_QUALITY,
+                "default_resolution": self.DEFAULT_RESOLUTION
+            },
+            "directories": {
+                "output": self.OUTPUT_DIR,
+                "temp": self.TEMP_DIR,
+                "cache": self.MODEL_CACHE_DIR
+            },
+            "performance": {
+                "max_concurrent": self.MAX_CONCURRENT_GENERATIONS,
+                "cleanup_temp": self.CLEANUP_TEMP_FILES,
+                "auto_optimize": self.AUTO_OPTIMIZE_SETTINGS
+            },
+            "api_tokens": {
+                "hf_token_set": bool(os.getenv("HF_TOKEN")),
+                "civitai_token_set": bool(os.getenv("CIVITAI_API_TOKEN"))
+            }
+        }
 
 
 # Global config instance

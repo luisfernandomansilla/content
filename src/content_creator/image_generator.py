@@ -731,27 +731,48 @@ class ImageGenerator:
             pipeline = pipeline.to(device)
             logger.info(f"Pipeline moved to device: {device}")
             
+            # Determine model type for optimization configuration
+            is_flux_lora = model_type == "flux_lora"
+            is_flux_model = model_type == "flux" or "flux" in model_name.lower()
+            
             # Enable memory efficient attention if available
             if hasattr(pipeline, 'enable_attention_slicing'):
                 logger.info("Enabling attention slicing")
                 pipeline.enable_attention_slicing()
             
-            if hasattr(pipeline, 'enable_memory_efficient_attention') and torch.cuda.is_available():
+            if hasattr(pipeline, 'enable_memory_efficient_attention') and torch.cuda.is_available() and not is_flux_lora:
                 try:
-                    logger.info("Enabling memory efficient attention")
-                    pipeline.enable_memory_efficient_attention()
-                except:
-                    logger.warning("Memory efficient attention not available")
+                    if is_flux_model:
+                        logger.info("⚠️  Skipping memory efficient attention for FLUX model")
+                        logger.info("🔧 Using standard memory management")
+                    else:
+                        logger.info("Enabling memory efficient attention")
+                        pipeline.enable_memory_efficient_attention()
+                except Exception as e:
+                    logger.warning(f"Memory efficient attention not available: {e}")
                     pass  # Some models don't support this
+            elif is_flux_lora or is_flux_model:
+                logger.info("🚫 Memory efficient attention disabled for FLUX models (compatibility)")
             
-            # Enable xformers if available
-            if hasattr(pipeline, 'enable_xformers_memory_efficient_attention'):
+            # Enable xformers if available (but skip for FLUX+LoRA due to compatibility issues)
+            
+            if hasattr(pipeline, 'enable_xformers_memory_efficient_attention') and not is_flux_lora:
                 try:
-                    logger.info("Enabling xformers memory efficient attention")
-                    pipeline.enable_xformers_memory_efficient_attention()
-                except:
-                    logger.warning("Xformers memory efficient attention not available")
+                    if is_flux_model:
+                        logger.info("⚠️  Skipping xformers for FLUX model due to compatibility issues")
+                        logger.info("🔧 Using standard attention mechanism instead")
+                    else:
+                        logger.info("Enabling xformers memory efficient attention")
+                        pipeline.enable_xformers_memory_efficient_attention()
+                except Exception as e:
+                    logger.warning(f"Xformers memory efficient attention not available: {e}")
                     pass  # xformers not available
+            elif is_flux_lora:
+                logger.info("🚫 Xformers disabled for FLUX+LoRA model (compatibility)")
+                logger.info("🔧 Using standard attention mechanism for better stability")
+            elif is_flux_model:
+                logger.info("🚫 Xformers disabled for FLUX model (compatibility)")
+                logger.info("🔧 Using standard attention mechanism for better stability")
             
             # Apple Silicon optimizations
             if self.hardware_detector.hardware_type == "apple_silicon":
