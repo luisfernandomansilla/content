@@ -181,7 +181,8 @@ class ModelManager:
         model_name: str, 
         model_id: Optional[str] = None,
         force: bool = False,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        model_type_hint: Optional[str] = None
     ) -> Optional[str]:
         """Download a model from Hugging Face or Civitai
         
@@ -190,6 +191,7 @@ class ModelManager:
             model_id: Model ID (HF model ID or civitai:ID format)
             force: Force re-download even if already downloaded
             progress_callback: Optional callback for progress updates
+            model_type_hint: Optional hint about intended use (video/image)
             
         Returns:
             Path to downloaded model or None if failed
@@ -210,6 +212,8 @@ class ModelManager:
         try:
             if progress_callback:
                 progress_callback(f"Starting download of {download_id}...")
+                if model_type_hint:
+                    progress_callback(f"Model intended for {model_type_hint} generation")
             
             # Determine source and download accordingly
             if download_id.startswith("civitai:"):

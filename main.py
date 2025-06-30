@@ -27,6 +27,9 @@ current_model_list = []
 search_results = []
 generation_status = ""
 
+# State variables for model search
+model_details_state = gr.State({})
+
 
 def get_model_choices():
     """Get list of available models for dropdown"""
@@ -72,7 +75,7 @@ def search_models(query: str, platform: str = "all", limit: int = 20):
     """Search for models across different platforms"""
     try:
         if not query.strip():
-            return [], "Please enter a search query"
+            return "Please enter a search query", [], {}
         
         # Determine platforms to search based on filter
         platforms = []
@@ -88,22 +91,41 @@ def search_models(query: str, platform: str = "all", limit: int = 20):
         results = generator.search_models(query, platforms=platforms, limit=limit)
         
         if not results:
-            return [], f"No models found for query: {query} on {platform}"
+            return f"No models found for query: {query} on {platform}", [], {}
         
-        # Format results for display
-        formatted_results = []
-        for model in results[:limit]:
+        # Format results for HTML display
+        formatted_html = f"<h4>Found {len(results)} models</h4>"
+        
+        # Prepare choices for dropdown and detailed info
+        model_choices = []
+        model_details = {}
+        
+        for i, model in enumerate(results[:limit]):
             name = model.get('name', 'Unknown')
             source = model.get('source', 'unknown')
             description = model.get('description', 'No description')
             downloads = model.get('downloads', 0)
             memory = model.get('memory_requirement', 'Unknown')
             model_type = model.get('type', 'unknown')
+            model_id = model.get('model_id', model.get('id', name))
             
-            # Add platform-specific info
-            result_text = f"**{name}** ({source})\n"
+            # Create unique display name with source
+            display_name = f"{name} ({source})"
+            model_choices.append(display_name)
             
-            # Add platform-specific badges
+            # Store detailed info
+            model_details[display_name] = {
+                'name': name,
+                'source': source,
+                'description': description,
+                'downloads': downloads,
+                'memory_requirement': memory,
+                'type': model_type,
+                'model_id': model_id,
+                'full_info': model
+            }
+            
+            # Create HTML card for display
             badges = []
             if source == "civitai":
                 if model.get('nsfw'):
@@ -117,47 +139,75 @@ def search_models(query: str, platform: str = "all", limit: int = 20):
             badges.append(f"💾 {memory}")
             badges.append(f"🏷️ {model_type}")
             
-            result_text += " | ".join(badges) + "\n"
-            result_text += f"{description[:150]}{'...' if len(description) > 150 else ''}\n"
-            
-            if source == "civitai" and model.get('creator'):
-                result_text += f"👤 By: {model.get('creator')}\n"
-            
-            formatted_results.append((result_text, name))
+            formatted_html += f"""
+            <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px;">
+                <h4>{name} <small>({source})</small></h4>
+                <p>{" | ".join(badges)}</p>
+                <p>{description[:200]}{'...' if len(description) > 200 else ''}</p>
+                {f'<p><strong>Creator:</strong> {model.get("creator")}</p>' if source == "civitai" and model.get("creator") else ''}
+            </div>
+            """
         
         platform_text = "all platforms" if platform == "all" else platform
-        return formatted_results, f"Found {len(results)} models on {platform_text}"
+        return formatted_html, model_choices, model_details
         
     except Exception as e:
         logger.error(f"Error searching models: {e}")
-        return [], f"Error searching models: {e}"
+        return f"Error searching models: {e}", [], {}
 
 
-def download_model(model_name: str, progress=gr.Progress()):
-    """Download a model from Hugging Face"""
+def download_model(model_name: str, model_type: str, model_details: dict, progress=gr.Progress()):
+    """Download a model from Hugging Face or Civitai"""
     try:
         if not model_name:
             return "Please select a model to download"
         
+        if not model_details:
+            return "No model details available. Please search for models first."
+        
+        # Get model info from details
+        model_info = model_details.get(model_name, {})
+        if not model_info:
+            return f"Model details not found for {model_name}"
+        
+        actual_name = model_info.get('name', model_name)
+        source = model_info.get('source', 'unknown')
+        model_id = model_info.get('model_id', actual_name)
+        
         def progress_callback(msg):
             progress(0.5, desc=msg)
         
-        progress(0.1, desc=f"Starting download of {model_name}...")
+        progress(0.1, desc=f"Starting download of {actual_name} from {source}...")
         
-        result = model_manager.download_model(
-            model_name=model_name,
-            progress_callback=progress_callback
-        )
+        # Determine download parameters based on model type
+        download_params = {
+            'model_name': actual_name,
+            'model_id': model_id,
+            'progress_callback': progress_callback
+        }
+        
+        # Add model type hint for organization
+        download_params['model_type_hint'] = model_type
+        
+        result = model_manager.download_model(**download_params)
         
         if result:
             progress(1.0, desc="Download completed!")
-            return f"Successfully downloaded {model_name}"
+            
+            # Add to appropriate model list based on type
+            success_msg = f"✅ Successfully downloaded {actual_name} from {source}"
+            if model_type == "video":
+                success_msg += f"\n📹 Model added to video generation options"
+            elif model_type == "image":
+                success_msg += f"\n🖼️ Model added to image generation options"
+            
+            return success_msg
         else:
-            return f"Failed to download {model_name}"
+            return f"❌ Failed to download {actual_name}"
             
     except Exception as e:
         logger.error(f"Error downloading model: {e}")
-        return f"Error downloading model: {e}"
+        return f"❌ Error downloading model: {e}"
 
 
 def generate_video(
@@ -650,15 +700,38 @@ def create_gradio_interface():
                         )
                     
                     with gr.Column(scale=1):
-                        selected_model = gr.Textbox(
-                            label="Selected Model",
-                            placeholder="Click on a model to select it",
-                            interactive=False
+                        # Model selection section
+                        gr.HTML("<h4>📦 Model Selection</h4>")
+                        
+                        available_models = gr.Dropdown(
+                            label="Available Models",
+                            choices=[],
+                            value=None,
+                            interactive=True,
+                            info="Select a model from search results"
+                        )
+                        
+                        model_type = gr.Dropdown(
+                            label="Model Type",
+                            choices=[
+                                ("🎥 Video Generation", "video"),
+                                ("🖼️ Image Generation", "image")
+                            ],
+                            value="video",
+                            interactive=True,
+                            info="Specify how you want to use this model"
+                        )
+                        
+                        # Model details display
+                        model_details_display = gr.Markdown(
+                            value="Select a model to see details",
+                            elem_classes=["model-info"]
                         )
                         
                         download_btn = gr.Button(
                             "📥 Download Model",
-                            variant="secondary"
+                            variant="primary",
+                            size="lg"
                         )
                         
                         download_status = gr.Textbox(
@@ -757,6 +830,9 @@ def create_gradio_interface():
                             interactive=False
                         )
         
+        # State variables for model search
+        model_details_state = gr.State({})
+        
         # Event Handlers
         
         # Main generation
@@ -824,13 +900,48 @@ def create_gradio_interface():
         search_btn.click(
             fn=search_models,
             inputs=[search_query, platform_filter],
-            outputs=[search_results_display, status_text]
+            outputs=[search_results_display, available_models, model_details_state]
+        )
+        
+        # Model selection change handler
+        def update_model_details(selected_model, model_details):
+            if selected_model and model_details and selected_model in model_details:
+                info = model_details[selected_model]
+                
+                details_text = f"""
+                **Model:** {info.get('name', 'Unknown')}
+                
+                **Source:** {info.get('source', 'Unknown')}
+                
+                **Description:** {info.get('description', 'No description')}
+                
+                **Memory Requirement:** {info.get('memory_requirement', 'Unknown')}
+                
+                **Type:** {info.get('type', 'Unknown')}
+                
+                **Downloads:** {info.get('downloads', 'N/A'):,} (if available)
+                """
+                
+                if info.get('source') == 'civitai':
+                    if info.get('full_info', {}).get('creator'):
+                        details_text += f"\n**Creator:** {info['full_info']['creator']}"
+                    if info.get('full_info', {}).get('nsfw'):
+                        details_text += "\n\n⚠️ **Content Warning:** This model may generate NSFW content."
+                
+                return details_text
+            else:
+                return "Select a model to see details"
+        
+        available_models.change(
+            fn=update_model_details,
+            inputs=[available_models, model_details_state],
+            outputs=[model_details_display]
         )
         
         # Model download
         download_btn.click(
             fn=download_model,
-            inputs=[selected_model],
+            inputs=[available_models, model_type, model_details_state],
             outputs=[download_status]
         )
         
