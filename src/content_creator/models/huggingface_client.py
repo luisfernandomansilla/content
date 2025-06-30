@@ -99,28 +99,53 @@ class HuggingFaceClient:
         try:
             logger.info(f"Searching for video models with query: '{query}'")
             
-            # Search for models with video generation tags
-            models = list_models(
+            # First try with specific video tags
+            models = list(list_models(
                 search=query,
                 tags=self.video_tags,
                 sort=sort,
                 direction=direction,
                 limit=limit * 2,  # Get more to filter later
                 token=self.api_key
-            )
+            ))
+            
+            logger.debug(f"HF search with video tags returned {len(models)} models")
+            
+            # If no results with specific tags, try broader search
+            did_broad_search = False
+            if not models:
+                logger.debug(f"No results with video tags, trying broader search for: '{query}'")
+                did_broad_search = True
+                models = list(list_models(
+                    search=query,
+                    sort=sort,
+                    direction=direction,
+                    limit=limit * 2,
+                    token=self.api_key
+                ))
+                logger.debug(f"HF broad search returned {len(models)} models")
             
             results = []
             for model in models:
                 try:
                     model_info_obj = self._parse_model_info(model)
-                    if model_info_obj and self._is_video_generation_model(model):
-                        results.append(model_info_obj)
+                    if model_info_obj:
+                        # For specific video search, check if it's a video model
+                        if not did_broad_search and self._is_video_generation_model(model):
+                            results.append(model_info_obj)
+                        # For broader search, be more lenient about what constitutes a useful model
+                        elif did_broad_search:
+                            # Check if it might be useful for content generation
+                            useful_tags = ['diffusion', 'text-to-image', 'image-to-image', 'stable-diffusion', 'text-to-video']
+                            model_tags_str = ' '.join(model_info_obj.tags).lower()
+                            if any(tag in model_tags_str for tag in useful_tags):
+                                results.append(model_info_obj)
                         
                     if len(results) >= limit:
                         break
                         
                 except Exception as e:
-                    logger.warning(f"Error parsing model {model.modelId}: {e}")
+                    logger.warning(f"Error parsing model {getattr(model, 'modelId', 'unknown')}: {e}")
                     continue
             
             # Cache results

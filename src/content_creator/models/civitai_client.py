@@ -75,9 +75,20 @@ class CivitaiClient:
             response.raise_for_status()
             
             data = response.json()
+            logger.debug(f"Civitai API response keys: {list(data.keys()) if isinstance(data, dict) else 'not dict'}")
+            
+            # Check if we have items
+            items = data.get("items", [])
+            logger.debug(f"Civitai returned {len(items)} items, first item type: {type(items[0]) if items else 'no items'}")
+            
             models = []
             
             for item in data.get("items", []):
+                # Skip if item is not a dictionary
+                if not isinstance(item, dict):
+                    logger.warning(f"Skipping non-dict item in Civitai response: {type(item)}")
+                    continue
+                    
                 model_info = self._parse_model_info(item)
                 if model_info:
                     models.append(model_info)
@@ -301,7 +312,7 @@ class CivitaiClient:
                 "type": model_type,
                 "content_type": content_type,
                 "creator": data.get("creator", {}).get("username", "Unknown"),
-                "tags": [tag.get("name") for tag in data.get("tags", [])],
+                "tags": [tag if isinstance(tag, str) else tag.get("name", "") for tag in data.get("tags", [])],
                 "stats": data.get("stats", {}),
                 "rating": data.get("stats", {}).get("rating", 0),
                 "downloads": data.get("stats", {}).get("downloadCount", 0),
@@ -435,6 +446,11 @@ class CivitaiClient:
             models = []
             
             for item in data.get("items", []):
+                # Skip if item is not a dictionary
+                if not isinstance(item, dict):
+                    logger.warning(f"Skipping non-dict item in Civitai featured response: {type(item)}")
+                    continue
+                    
                 model_info = self._parse_model_info(item)
                 if model_info and model_info.get("content_type") == content_type:
                     models.append(model_info)
