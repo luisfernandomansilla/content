@@ -627,6 +627,41 @@ def clear_gallery():
         return f"❌ Error limpiando galería: {e}", get_gallery_files(), get_gallery_info()
 
 
+def analyze_prompt_complexity(prompt: str) -> Dict[str, Any]:
+    """Analyze prompt complexity and recommend optimal models"""
+    word_count = len(prompt.split())
+    char_count = len(prompt)
+    
+    # Rough token estimate (1.3 tokens per word for English)
+    estimated_tokens = int(word_count * 1.3)
+    
+    complexity = {
+        'word_count': word_count,
+        'char_count': char_count,
+        'estimated_tokens': estimated_tokens,
+        'is_long': estimated_tokens > 70,
+        'is_very_long': estimated_tokens > 100,
+        'clip_truncated': estimated_tokens > 77,
+        'recommended_models': [],
+        'warnings': []
+    }
+    
+    if complexity['clip_truncated']:
+        complexity['warnings'].append(
+            "⚠️ Este prompt puede ser truncado por modelos basados en CLIP (límite: 77 tokens)"
+        )
+        complexity['recommended_models'] = [
+            "FLUX.1-dev", "FLUX.1-schnell", "Flux-NSFW-uncensored"
+        ]
+    
+    if complexity['is_very_long']:
+        complexity['warnings'].append(
+            "📝 Prompt muy largo - considera usar modelos FLUX para mejor resultado"
+        )
+    
+    return complexity
+
+
 def create_gradio_interface():
     """Create the main Gradio interface"""
     
@@ -801,6 +836,13 @@ def create_gradio_interface():
                             value=""
                         )
                         
+                        # Prompt analysis display
+                        prompt_analysis = gr.Markdown(
+                            value="💡 **Tip**: Prompts largos funcionan mejor con modelos FLUX",
+                            elem_classes=["model-info"],
+                            visible=False
+                        )
+                        
                         with gr.Row():
                             img_base_model_dropdown = gr.Dropdown(
                                 choices=get_base_model_choices(),
@@ -921,6 +963,17 @@ def create_gradio_interface():
                         <div style="background-color: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #ffc107;">
                             <strong>⚠️ Content Warning:</strong>
                             <p>Some models may generate NSFW content. Models marked with ⚠️ are uncensored models. Use responsibly and in accordance with your local laws and community guidelines.</p>
+                        </div>
+                        """)
+                        
+                        # CLIP Limitation Info
+                        gr.HTML("""
+                        <div style="background-color: #e7f3ff; padding: 10px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #2196f3;">
+                            <strong>🔤 Prompts Largos:</strong>
+                            <p><strong>CLIP (77 tokens límite):</strong> Stable Diffusion, SDXL, etc.</p>
+                            <p><strong>T5 (sin límite práctico):</strong> FLUX.1-dev, FLUX.1-schnell</p>
+                            <p><strong>Compel disponible:</strong> Mejora el manejo de prompts largos en modelos CLIP</p>
+                            <p>💡 Para prompts largos o complejos, usa modelos FLUX para obtener mejores resultados sin truncamiento.</p>
                         </div>
                         """)
                     
@@ -1482,6 +1535,36 @@ def create_gradio_interface():
         status_text.change(
             fn=auto_refresh_gallery,
             outputs=[gallery, gallery_info]
+        )
+        
+        # Prompt analysis for long prompt detection
+        def update_prompt_analysis(prompt):
+            if not prompt or len(prompt.strip()) < 10:
+                return gr.update(visible=False)
+            
+            analysis = analyze_prompt_complexity(prompt)
+            
+            if analysis['clip_truncated'] or analysis['is_very_long']:
+                warnings_text = "\n".join(analysis['warnings'])
+                
+                if analysis['recommended_models']:
+                    recommendations = ", ".join(analysis['recommended_models'])
+                    warnings_text += f"\n\n🎯 **Modelos recomendados**: {recommendations}"
+                
+                warnings_text += f"\n\n📊 **Estadísticas del prompt**:"
+                warnings_text += f"\n- Palabras: {analysis['word_count']}"
+                warnings_text += f"\n- Tokens estimados: {analysis['estimated_tokens']}"
+                warnings_text += f"\n- Límite CLIP: 77 tokens"
+                
+                return gr.update(value=warnings_text, visible=True)
+            else:
+                return gr.update(visible=False)
+        
+        # Connect prompt analysis to input changes
+        img_prompt.change(
+            fn=update_prompt_analysis,
+            inputs=[img_prompt],
+            outputs=[prompt_analysis]
         )
         
         # Load initial cache info

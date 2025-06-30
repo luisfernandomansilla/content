@@ -1,6 +1,6 @@
 # Core dependencies
 vllm>=0.5.0
-gradio>=4.0.0
+gradio==4.44.1
 torch>=2.0.0
 torchvision>=0.15.0
 transformers>=4.35.0
@@ -13,10 +13,10 @@ imageio-ffmpeg>=0.4.9
 av>=10.0.0
 
 # Model and inference
-diffusers>=0.24.0
-accelerate>=0.24.0
+diffusers>=0.25.0
+accelerate>=0.25.0
 safetensors>=0.4.0
-huggingface-hub>=0.17.0
+huggingface-hub>=0.19.0
 peft>=0.6.0
 
 # Environment configuration
@@ -52,4 +52,7 @@ nvidia-ml-py>=12.0.0
 
 # Optional: For enhanced performance
 psutil>=5.9.0
-GPUtil>=1.4.0 
+GPUtil>=1.4.0
+
+# Optional dependencies for enhanced functionality
+compel>=2.0.0  # For better long prompt handling with CLIP-based models 

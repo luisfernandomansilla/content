@@ -8,6 +8,8 @@ from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 import numpy as np
 from PIL import Image
+import hashlib
+import json
 
 try:
     import torch
@@ -21,7 +23,106 @@ from .models.model_manager import model_manager
 from .utils.hardware import hardware_detector
 from .utils.image_utils import image_processor
 
+# Core ML imports
+from diffusers import (
+    StableDiffusionPipeline, 
+    StableDiffusionXLPipeline,
+    FluxPipeline,
+    AutoPipelineForText2Image,
+    DiffusionPipeline
+)
+
+# Additional imports for long prompt handling
+try:
+    from compel import Compel, ReturnedEmbeddingsType
+    COMPEL_AVAILABLE = True
+except ImportError:
+    COMPEL_AVAILABLE = False
+    logging.warning("Compel not available - long prompt support limited")
+
 logger = logging.getLogger(__name__)
+
+
+def chunk_prompt(prompt: str, max_length: int = 75) -> List[str]:
+    """Split a long prompt into chunks that fit within token limits"""
+    # Simple word-based chunking
+    words = prompt.split()
+    chunks = []
+    current_chunk = []
+    current_length = 0
+    
+    for word in words:
+        # Rough token estimate: ~1.3 tokens per word for English
+        word_tokens = len(word.split()) + 1
+        
+        if current_length + word_tokens > max_length and current_chunk:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = [word]
+            current_length = word_tokens
+        else:
+            current_chunk.append(word)
+            current_length += word_tokens
+    
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+    
+    return chunks
+
+
+def prioritize_prompt_parts(prompt: str) -> str:
+    """Prioritize important parts of the prompt for token-limited models"""
+    # Extract key elements and prioritize them
+    important_keywords = [
+        'masterpiece', 'best quality', 'high quality', 'detailed', 'high resolution',
+        'cinematic', '4k', '8k', 'ultra detailed', 'photorealistic', 'realistic'
+    ]
+    
+    # Split prompt into parts
+    parts = [part.strip() for part in prompt.split(',')]
+    
+    # Separate quality terms from descriptive terms
+    quality_parts = []
+    descriptive_parts = []
+    character_parts = []
+    
+    for part in parts:
+        part_lower = part.lower()
+        if any(keyword in part_lower for keyword in important_keywords):
+            quality_parts.append(part)
+        elif any(char_term in part_lower for char_term in ['girl', 'boy', 'woman', 'man', 'person', 'character']):
+            character_parts.append(part)
+        else:
+            descriptive_parts.append(part)
+    
+    # Rebuild prompt with priority order: character -> key descriptive -> quality
+    prioritized_parts = character_parts[:3] + descriptive_parts[:8] + quality_parts[:3]
+    
+    return ", ".join(prioritized_parts)
+
+
+def enhance_prompt_for_model(prompt: str, model_type: str) -> str:
+    """Enhance prompt based on model capabilities"""
+    if model_type == "flux" or model_type == "flux_lora":
+        # FLUX has T5 text encoder - can handle longer prompts
+        return prompt
+    elif model_type in ["stable_diffusion", "diffusion", "lora", "checkpoint"]:
+        # Use prioritized version for CLIP-based models
+        word_count = len(prompt.split())
+        estimated_tokens = int(word_count * 1.3)
+        
+        if estimated_tokens > 75:  # Close to CLIP limit
+            logger.warning(f"🔤 Long prompt detected ({word_count} words, ~{estimated_tokens} tokens). Prioritizing key elements...")
+            return prioritize_prompt_parts(prompt)
+        return prompt
+    else:
+        # For unknown model types, assume CLIP limitation
+        word_count = len(prompt.split())
+        estimated_tokens = int(word_count * 1.3)
+        
+        if estimated_tokens > 75:
+            logger.warning(f"🔤 Long prompt detected for unknown model type '{model_type}'. Prioritizing key elements...")
+            return prioritize_prompt_parts(prompt)
+        return prompt
 
 
 class ImageGenerator:
@@ -474,6 +575,19 @@ class ImageGenerator:
             # Enhanced prompt with style
             enhanced_prompt = prompt + style_info.get('style_prompt_suffix', '')
             
+            # Optimize prompt for the specific model type
+            model_type = model_info.get('type', 'unknown')
+            original_prompt = enhanced_prompt
+            enhanced_prompt = enhance_prompt_for_model(enhanced_prompt, model_type)
+            
+            # Log prompt optimization if it occurred
+            if enhanced_prompt != original_prompt:
+                logger.info(f"🔤 Prompt optimized for {model_type}:")
+                logger.info(f"   Original length: {len(original_prompt.split())} words")
+                logger.info(f"   Optimized length: {len(enhanced_prompt.split())} words")
+                if progress_callback:
+                    progress_callback(f"Optimizing long prompt for {model_type} model...")
+            
             if progress_callback:
                 progress_callback(f"Loading model {model_name}...")
             
@@ -487,7 +601,7 @@ class ImageGenerator:
             if progress_callback:
                 progress_callback(f"Generating image at {width}x{height}...")
             
-            # Set up generation parameters
+            # Set up generation parameters with advanced prompt handling
             generation_kwargs = {
                 "prompt": enhanced_prompt,
                 "width": width,
@@ -496,13 +610,45 @@ class ImageGenerator:
                 "num_inference_steps": num_inference_steps,
             }
             
-            # Add negative prompt if supported
-            if hasattr(pipeline, 'text_encoder') and negative_prompt:
-                generation_kwargs["negative_prompt"] = negative_prompt
+            # Advanced prompt processing for CLIP-limited models
+            if model_type in ["stable_diffusion", "diffusion"] and COMPEL_AVAILABLE:
+                try:
+                    # Use Compel for better prompt handling on CLIP-based models
+                    if hasattr(pipeline, 'text_encoder'):
+                        compel = Compel(
+                            tokenizer=pipeline.tokenizer,
+                            text_encoder=pipeline.text_encoder,
+                            returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED,
+                            requires_pooled=False
+                        )
+                        
+                        # Generate embeddings for the prompt
+                        prompt_embeds = compel(enhanced_prompt)
+                        generation_kwargs["prompt_embeds"] = prompt_embeds
+                        generation_kwargs.pop("prompt", None)  # Remove text prompt since we're using embeddings
+                        
+                        logger.info("✅ Using Compel for advanced prompt processing")
+                        
+                        # Handle negative prompt with Compel if available
+                        if negative_prompt:
+                            negative_embeds = compel(negative_prompt)
+                            generation_kwargs["negative_prompt_embeds"] = negative_embeds
+                        else:
+                            # Use empty embedding for negative prompt
+                            negative_embeds = compel("")
+                            generation_kwargs["negative_prompt_embeds"] = negative_embeds
+                except Exception as e:
+                    logger.warning(f"⚠️ Compel processing failed, using standard prompt: {e}")
+                    # Fallback to standard prompt processing
+                    if negative_prompt:
+                        generation_kwargs["negative_prompt"] = negative_prompt
+            else:
+                # Standard prompt processing for FLUX and other models
+                if hasattr(pipeline, 'text_encoder') and negative_prompt:
+                    generation_kwargs["negative_prompt"] = negative_prompt
             
             # Set seed for reproducibility
             if seed is not None:
-                import torch
                 generator = torch.Generator(device=pipeline.device).manual_seed(seed)
                 generation_kwargs["generator"] = generator
             
