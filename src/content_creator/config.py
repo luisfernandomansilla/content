@@ -209,9 +209,9 @@ class Config:
     # Default style
     DEFAULT_STYLE: str = "Realistic"
     
-    # Supported Resolutions (width, height) - All dimensions divisible by 8 for AI models
+    # Supported Resolutions (width, height) - Optimized for different AI models
     RESOLUTIONS: Dict[str, Tuple[int, int]] = field(default_factory=lambda: {
-        "480p": (856, 480),  # Fixed: 856 is divisible by 8 (was 854)
+        "480p": (864, 480),  # Fixed: 864 is divisible by 16 for FLUX compatibility
         "720p": (1280, 720),
         "1080p": (1920, 1080),
         "1440p": (2560, 1440),
@@ -375,17 +375,35 @@ class Config:
         """Get output format information"""
         return self.OUTPUT_FORMATS.get(format_name, self.OUTPUT_FORMATS[self.DEFAULT_OUTPUT_FORMAT])
     
-    def validate_resolution(self, width: int, height: int) -> Tuple[int, int]:
-        """Ensure resolution dimensions are divisible by 8 for AI models"""
-        def round_to_8(value: int) -> int:
-            return ((value + 7) // 8) * 8
+    def validate_resolution(self, width: int, height: int, divisor: int = 8) -> Tuple[int, int]:
+        """Ensure resolution dimensions are divisible by specified divisor for AI models"""
+        def round_to_divisor(value: int, div: int) -> int:
+            return ((value + div - 1) // div) * div
         
-        return (round_to_8(width), round_to_8(height))
+        return (round_to_divisor(width, divisor), round_to_divisor(height, divisor))
     
-    def get_validated_resolution(self, resolution_name: str) -> Tuple[int, int]:
-        """Get resolution with validation that dimensions are divisible by 8"""
+    def get_validated_resolution(self, resolution_name: str, model_type: str = None) -> Tuple[int, int]:
+        """Get resolution with validation based on model requirements"""
         width, height = self.get_resolution(resolution_name)
-        return self.validate_resolution(width, height)
+        
+        # FLUX models require dimensions divisible by 16
+        if model_type in ["flux", "flux_lora"]:
+            return self.validate_resolution(width, height, divisor=16)
+        
+        # Default: divisible by 8 for most AI models
+        return self.validate_resolution(width, height, divisor=8)
+    
+    def get_validated_resolution_for_model(self, resolution_name: str, model_name: str) -> Tuple[int, int]:
+        """Get resolution validated for specific model"""
+        # Determine model type from model name or info
+        model_type = None
+        
+        if model_name in self.SUPPORTED_IMAGE_MODELS:
+            model_type = self.SUPPORTED_IMAGE_MODELS[model_name].get('type')
+        elif "flux" in model_name.lower():
+            model_type = "flux"
+        
+        return self.get_validated_resolution(resolution_name, model_type)
     
     def get_config_summary(self) -> Dict[str, Any]:
         """Get a summary of current configuration for debugging"""

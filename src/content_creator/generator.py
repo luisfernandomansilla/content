@@ -37,10 +37,15 @@ class VideoGenerator:
         self.image_processor = image_processor
         self.video_processor = video_processor
         
+        # Pipeline cache to avoid reloading models
+        self._video_pipeline_cache = {}
+        self._current_video_model = None
+        self._current_video_pipeline = None
+        
         # Log hardware info
         self.hardware_detector.log_hardware_info()
         
-        logger.info("Video generator initialized")
+        logger.info("Video generator initialized with pipeline caching")
     
     def _get_auth_token(self) -> str:
         """Get authentication token for gated models"""
@@ -286,8 +291,8 @@ class VideoGenerator:
             if progress_callback:
                 progress_callback(f"Loading video model {model_name}...")
             
-            # Load the appropriate pipeline for video generation
-            pipeline = self._load_video_pipeline(model_name, model_info, progress_callback)
+            # Load the appropriate pipeline for video generation (with caching)
+            pipeline = self._get_or_load_video_pipeline(model_name, model_info, progress_callback)
             
             if not pipeline:
                 logger.error(f"Failed to load video pipeline for {model_name}")
@@ -321,6 +326,39 @@ class VideoGenerator:
             logger.error(f"Error generating video frames: {e}")
             logger.warning("Falling back to placeholder video generation")
             return self._generate_placeholder_frames(prompt, model_name, style, duration, resolution, progress_callback)
+    
+    def _get_or_load_video_pipeline(
+        self,
+        model_name: str,
+        model_info: Dict[str, Any],
+        progress_callback: Optional[callable] = None
+    ):
+        """Get cached video pipeline or load new one"""
+        # Check if we have this model cached
+        cache_key = f"{model_name}_{model_info.get('model_id', model_name)}"
+        
+        if cache_key in self._video_pipeline_cache:
+            logger.info(f"📋 Using cached video pipeline for {model_name}")
+            if progress_callback:
+                progress_callback(f"Using cached video model {model_name}...")
+                
+            pipeline = self._video_pipeline_cache[cache_key]
+            self._current_video_model = model_name
+            self._current_video_pipeline = pipeline
+            return pipeline
+        
+        # Load new pipeline
+        logger.info(f"🔄 Loading new video pipeline for {model_name}")
+        pipeline = self._load_video_pipeline(model_name, model_info, progress_callback)
+        
+        if pipeline:
+            # Cache the pipeline
+            self._video_pipeline_cache[cache_key] = pipeline
+            self._current_video_model = model_name
+            self._current_video_pipeline = pipeline
+            logger.info(f"✅ Video pipeline cached for {model_name}")
+            
+        return pipeline
     
     def _load_video_pipeline(
         self,
@@ -676,6 +714,44 @@ class VideoGenerator:
     def get_hardware_info(self) -> Dict[str, Any]:
         """Get hardware information"""
         return self.hardware_detector.get_device_info()
+    
+    def clear_video_pipeline_cache(self):
+        """Clear the video pipeline cache to free memory"""
+        if self._video_pipeline_cache:
+            logger.info(f"🗑️ Clearing video pipeline cache ({len(self._video_pipeline_cache)} models)")
+            
+            # Free GPU memory if possible
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except:
+                pass
+            
+            self._video_pipeline_cache.clear()
+            self._current_video_model = None
+            self._current_video_pipeline = None
+            logger.info("✅ Video pipeline cache cleared")
+        else:
+            logger.info("📋 Video pipeline cache is already empty")
+    
+    def get_cached_video_models(self) -> List[str]:
+        """Get list of currently cached video models"""
+        return list(self._video_pipeline_cache.keys())
+    
+    def get_video_cache_info(self) -> Dict[str, Any]:
+        """Get information about the current video cache state"""
+        return {
+            "cached_models": len(self._video_pipeline_cache),
+            "cached_model_names": list(self._video_pipeline_cache.keys()),
+            "current_model": self._current_video_model,
+            "memory_usage": "Available" if self._video_pipeline_cache else "Empty"
+        }
+    
+    def is_video_model_cached(self, model_name: str, model_info: Dict[str, Any]) -> bool:
+        """Check if a specific video model is cached"""
+        cache_key = f"{model_name}_{model_info.get('model_id', model_name)}"
+        return cache_key in self._video_pipeline_cache
 
 
 # Global generator instance

@@ -58,6 +58,39 @@ The system now automatically:
 - ✅ Uses standard attention mechanisms
 - ✅ Maintains performance with other optimizations
 
+## ⚡ Pipeline Caching System
+
+### Performance Enhancement
+- **Problem**: Models were being loaded from scratch on every generation (2-5 minutes each time)
+- **Solution**: Intelligent pipeline caching system
+- **Benefit**: First load takes time, subsequent generations are instant
+
+### How It Works
+
+**First Generation:**
+```
+INFO:src.content_creator.image_generator:🔄 Loading new pipeline for Flux-NSFW-uncensored
+[Loading process takes 2-5 minutes]
+INFO:src.content_creator.image_generator:✅ Pipeline cached for Flux-NSFW-uncensored
+```
+
+**Subsequent Generations:**
+```
+INFO:src.content_creator.image_generator:📋 Using cached pipeline for Flux-NSFW-uncensored
+[Generation starts immediately]
+```
+
+### Cache Features
+- ✅ **Automatic caching**: Models cached after first load
+- ✅ **Memory management**: Efficient GPU memory usage
+- ✅ **Multi-model support**: Different models cached separately
+- ✅ **Manual clearing**: Cache can be cleared to free memory
+
+### Resolution Optimization
+- ✅ **FLUX models**: Dimensions automatically rounded to multiples of 16
+- ✅ **Other models**: Dimensions rounded to multiples of 8
+- ✅ **No manual adjustment**: System handles compatibility automatically
+
 ### Logs to Expect
 
 **Successful FLUX+LoRA Loading:**

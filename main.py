@@ -877,12 +877,31 @@ def create_gradio_interface():
         
         def get_cache_info():
             try:
-                info = model_manager.get_cache_info()
-                return f"""Cache Info:
-                - Cached models: {info['cached_models']}
-                - Downloaded models: {info['downloaded_models']}
-                - Cache file exists: {info['cache_file_exists']}
-                - Cache file size: {info['cache_file_size']} bytes"""
+                # Get model cache info
+                model_info = model_manager.get_cache_info()
+                
+                # Get pipeline cache info
+                image_cache_info = image_generator.get_cache_info()
+                video_cache_info = generator.get_video_cache_info()
+                
+                return f"""📋 Cache Information:
+
+🗄️ Model Downloads:
+  • Downloaded models: {model_info['downloaded_models']}
+  • Cache file exists: {model_info['cache_file_exists']}
+  • Cache file size: {model_info['cache_file_size']} bytes
+
+🖼️ Image Pipelines (Memory):
+  • Cached models: {image_cache_info['cached_models']}
+  • Current model: {image_cache_info['current_model'] or 'None'}
+  • Memory status: {image_cache_info['memory_usage']}
+
+🎬 Video Pipelines (Memory):
+  • Cached models: {video_cache_info['cached_models']}
+  • Current model: {video_cache_info['current_model'] or 'None'}
+  • Memory status: {video_cache_info['memory_usage']}
+
+💡 Pipeline caching speeds up generation by avoiding model reloading"""
             except Exception as e:
                 return f"Error getting cache info: {e}"
         
@@ -893,8 +912,12 @@ def create_gradio_interface():
         
         def clear_cache():
             try:
+                # Clear all types of cache
                 model_manager.clear_cache()
-                return "Cache cleared successfully"
+                image_generator.clear_pipeline_cache()
+                generator.clear_video_pipeline_cache()
+                
+                return "✅ All caches cleared successfully:\n• Model downloads cache\n• Image pipeline cache\n• Video pipeline cache"
             except Exception as e:
                 return f"Error clearing cache: {e}"
         

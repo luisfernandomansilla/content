@@ -33,7 +33,12 @@ class ImageGenerator:
         self.hardware_detector = hardware_detector
         self.image_processor = image_processor
         
-        logger.info("Image generator initialized")
+        # Pipeline cache to avoid reloading models
+        self._pipeline_cache = {}
+        self._current_model = None
+        self._current_pipeline = None
+        
+        logger.info("Image generator initialized with pipeline caching")
     
     def _get_auth_token(self) -> str:
         """Get authentication token for gated models"""
@@ -350,8 +355,8 @@ class ImageGenerator:
             # Get quality settings
             quality_settings = config.get_quality_settings(quality)
             
-            # Get resolution (validated to be divisible by 8)
-            width, height = config.get_validated_resolution(resolution)
+            # Get resolution (validated for the specific model)
+            width, height = config.get_validated_resolution_for_model(resolution, model_name)
             
             # Enhanced prompt with style
             enhanced_prompt = prompt + style_info.get('style_prompt_suffix', '')
@@ -359,8 +364,8 @@ class ImageGenerator:
             if progress_callback:
                 progress_callback(f"Loading model {model_name}...")
             
-            # Load the appropriate pipeline based on model type
-            pipeline = self._load_pipeline(model_name, model_info, progress_callback)
+            # Load the appropriate pipeline based on model type (with caching)
+            pipeline = self._get_or_load_pipeline(model_name, model_info, progress_callback)
             
             if not pipeline:
                 logger.error(f"Failed to load pipeline for {model_name}")
@@ -414,6 +419,39 @@ class ImageGenerator:
             return self._create_placeholder_image(
                 width, height, enhanced_prompt, model_name
             )
+    
+    def _get_or_load_pipeline(
+        self,
+        model_name: str,
+        model_info: Dict[str, Any],
+        progress_callback: Optional[callable] = None
+    ):
+        """Get cached pipeline or load new one"""
+        # Check if we have this model cached
+        cache_key = f"{model_name}_{model_info.get('model_id', model_name)}"
+        
+        if cache_key in self._pipeline_cache:
+            logger.info(f"📋 Using cached pipeline for {model_name}")
+            if progress_callback:
+                progress_callback(f"Using cached model {model_name}...")
+                
+            pipeline = self._pipeline_cache[cache_key]
+            self._current_model = model_name
+            self._current_pipeline = pipeline
+            return pipeline
+        
+        # Load new pipeline
+        logger.info(f"🔄 Loading new pipeline for {model_name}")
+        pipeline = self._load_pipeline(model_name, model_info, progress_callback)
+        
+        if pipeline:
+            # Cache the pipeline
+            self._pipeline_cache[cache_key] = pipeline
+            self._current_model = model_name
+            self._current_pipeline = pipeline
+            logger.info(f"✅ Pipeline cached for {model_name}")
+            
+        return pipeline
     
     def _load_pipeline(
         self,
@@ -868,13 +906,47 @@ class ImageGenerator:
         if hardware_type == "apple_silicon":
             return ["FLUX.1-schnell", "Stable Diffusion 2.1", "DreamShaper"]
         elif hardware_type == "nvidia_gpu":
-            gpu_memory = self.hardware_detector._get_gpu_memory()
-            if gpu_memory >= 12:
-                return ["FLUX.1-dev", "Flux-NSFW-uncensored", "Stable Diffusion XL"]
-            else:
-                return ["FLUX.1-schnell", "Stable Diffusion 2.1", "Midjourney Style"]
+            return ["Flux-NSFW-uncensored", "FLUX.1-dev", "Stable Diffusion XL"]
         else:
             return ["Stable Diffusion 2.1", "DreamShaper"]
+    
+    def clear_pipeline_cache(self):
+        """Clear the pipeline cache to free memory"""
+        if self._pipeline_cache:
+            logger.info(f"🗑️ Clearing pipeline cache ({len(self._pipeline_cache)} models)")
+            
+            # Free GPU memory if possible
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except:
+                pass
+            
+            self._pipeline_cache.clear()
+            self._current_model = None
+            self._current_pipeline = None
+            logger.info("✅ Pipeline cache cleared")
+        else:
+            logger.info("📋 Pipeline cache is already empty")
+    
+    def get_cached_models(self) -> List[str]:
+        """Get list of currently cached models"""
+        return list(self._pipeline_cache.keys())
+    
+    def get_cache_info(self) -> Dict[str, Any]:
+        """Get information about the current cache state"""
+        return {
+            "cached_models": len(self._pipeline_cache),
+            "cached_model_names": list(self._pipeline_cache.keys()),
+            "current_model": self._current_model,
+            "memory_usage": "Available" if self._pipeline_cache else "Empty"
+        }
+    
+    def is_model_cached(self, model_name: str, model_info: Dict[str, Any]) -> bool:
+        """Check if a specific model is cached"""
+        cache_key = f"{model_name}_{model_info.get('model_id', model_name)}"
+        return cache_key in self._pipeline_cache
 
 
 # Global image generator instance
