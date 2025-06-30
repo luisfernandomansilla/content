@@ -45,7 +45,7 @@ class ModelManager:
         logger.info("Model manager initialized with Hugging Face and Civitai support")
     
     def get_available_models(self, include_online: bool = True) -> Dict[str, Dict[str, Any]]:
-        """Get all available models (default + online)
+        """Get all available models (default + downloaded + online)
         
         Args:
             include_online: Whether to include online models from Hugging Face
@@ -55,18 +55,186 @@ class ModelManager:
         """
         models = self.default_models.copy()
         
+        # Add downloaded models
+        downloaded_models = self._scan_downloaded_models()
+        models.update(downloaded_models)
+        
         if include_online:
             # Add featured models from Hugging Face
             try:
                 featured_models = self.hf_client.get_featured_models()
                 for model_info in featured_models:
-                    # Convert HF ModelInfo to our format
-                    models[model_info.model_name] = self._convert_hf_model_info(model_info)
+                    # Don't overwrite downloaded models
+                    if model_info.model_name not in models:
+                        # Convert HF ModelInfo to our format
+                        models[model_info.model_name] = self._convert_hf_model_info(model_info)
                     
             except Exception as e:
                 logger.warning(f"Could not fetch featured models: {e}")
         
         return models
+    
+    def _scan_downloaded_models(self) -> Dict[str, Dict[str, Any]]:
+        """Scan the models directory for downloaded models"""
+        downloaded_models = {}
+        models_dir = Path(config.MODEL_CACHE_DIR)
+        
+        if not models_dir.exists():
+            return downloaded_models
+        
+        try:
+            # Scan for HuggingFace repository directories
+            for item in models_dir.iterdir():
+                if item.is_dir() and item.name.startswith("models--"):
+                    model_info = self._analyze_hf_model_dir(item)
+                    if model_info:
+                        downloaded_models[model_info['name']] = model_info
+            
+            # Scan for individual model files (LoRAs, checkpoints, etc.)
+            for item in models_dir.iterdir():
+                if item.is_file() and item.suffix in ['.safetensors', '.ckpt', '.pt', '.pth']:
+                    model_info = self._analyze_model_file(item)
+                    if model_info:
+                        downloaded_models[model_info['name']] = model_info
+            
+            logger.info(f"Found {len(downloaded_models)} downloaded models")
+            
+        except Exception as e:
+            logger.warning(f"Error scanning downloaded models: {e}")
+        
+        return downloaded_models
+    
+    def _analyze_hf_model_dir(self, model_dir: Path) -> Optional[Dict[str, Any]]:
+        """Analyze a HuggingFace model directory"""
+        try:
+            # Parse model name from directory (models--author--model-name)
+            dir_parts = model_dir.name.split("--")
+            if len(dir_parts) >= 3:
+                author = dir_parts[1]
+                model_name = dir_parts[2]
+                full_name = f"{author}/{model_name}"
+                
+                # Check for snapshots directory
+                snapshots_dir = model_dir / "snapshots"
+                if snapshots_dir.exists():
+                    # Find the latest snapshot
+                    snapshots = list(snapshots_dir.iterdir())
+                    if snapshots:
+                        latest_snapshot = max(snapshots, key=lambda x: x.stat().st_mtime)
+                        
+                        # Determine model type based on contents
+                        model_type = self._determine_model_type_from_files(latest_snapshot)
+                        
+                        return {
+                            'name': model_name,
+                            'full_name': full_name,
+                            'source': 'huggingface_downloaded',
+                            'type': model_type,
+                            'description': f'Downloaded HuggingFace model: {full_name}',
+                            'path': str(model_dir),
+                            'model_id': full_name,
+                            'memory_requirement': self._estimate_memory_requirement(latest_snapshot),
+                            'downloaded': True
+                        }
+        except Exception as e:
+            logger.warning(f"Error analyzing HF model dir {model_dir}: {e}")
+        
+        return None
+    
+    def _analyze_model_file(self, model_file: Path) -> Optional[Dict[str, Any]]:
+        """Analyze an individual model file"""
+        try:
+            file_size = model_file.stat().st_size
+            
+            # Determine model type based on filename and size
+            filename = model_file.stem
+            
+            # Check if it's likely a LoRA (smaller files, usually under 500MB)
+            is_likely_lora = file_size < 500 * 1024 * 1024  # 500MB threshold
+            
+            model_type = "lora" if is_likely_lora else "checkpoint"
+            
+            # Estimate memory requirement based on file size
+            memory_gb = max(1, int(file_size / (1024**3)) + 2)  # File size + 2GB overhead
+            memory_requirement = f"{memory_gb}GB"
+            
+            # Determine if it's for image or video generation based on filename
+            content_type = "image"  # Most single files are image models
+            if any(keyword in filename.lower() for keyword in ["video", "animate", "motion"]):
+                content_type = "video"
+            
+            return {
+                'name': filename,
+                'source': 'local_file',
+                'type': model_type,
+                'content_type': content_type,
+                'description': f'Local {model_type} file: {filename}',
+                'path': str(model_file),
+                'file_size': file_size,
+                'memory_requirement': memory_requirement,
+                'downloaded': True,
+                'requires_base_model': is_likely_lora
+            }
+            
+        except Exception as e:
+            logger.warning(f"Error analyzing model file {model_file}: {e}")
+        
+        return None
+    
+    def _determine_model_type_from_files(self, model_dir: Path) -> str:
+        """Determine model type from files in the model directory"""
+        try:
+            files = list(model_dir.glob("*.json")) + list(model_dir.glob("*.py"))
+            file_names = [f.name.lower() for f in files]
+            
+            # Check for specific model indicators
+            if any("flux" in name for name in file_names):
+                return "flux"
+            elif "model_index.json" in file_names or "diffusers" in str(model_dir):
+                if any("video" in name or "animate" in name for name in file_names):
+                    return "video_diffusion"
+                else:
+                    return "stable_diffusion"
+            elif any("config.json" in name for name in file_names):
+                return "transformers_model"
+            else:
+                return "unknown"
+                
+        except Exception:
+            return "unknown"
+    
+    def _estimate_memory_requirement(self, model_dir: Path) -> str:
+        """Estimate memory requirement from model directory size"""
+        try:
+            total_size = sum(f.stat().st_size for f in model_dir.rglob('*') if f.is_file())
+            # Rough estimate: model size + 50% overhead
+            estimated_gb = max(2, int(total_size * 1.5 / (1024**3)))
+            return f"{estimated_gb}GB"
+        except Exception:
+            return "Unknown"
+    
+    def get_available_loras(self) -> Dict[str, Dict[str, Any]]:
+        """Get available LoRA models specifically"""
+        all_models = self._scan_downloaded_models()
+        loras = {name: info for name, info in all_models.items() 
+                if info.get('type') == 'lora'}
+        return loras
+    
+    def get_base_models_for_lora(self, lora_name: str) -> List[str]:
+        """Get compatible base models for a LoRA"""
+        # This is a simplified implementation
+        # In practice, you'd want to check LoRA metadata for compatibility
+        all_models = self.get_available_models()
+        
+        # Return models that are not LoRAs and are for image generation
+        base_models = []
+        for name, info in all_models.items():
+            if (info.get('type') != 'lora' and 
+                info.get('content_type', 'image') == 'image' and
+                'flux' in name.lower()):  # Simplified compatibility check
+                base_models.append(name)
+        
+        return base_models
     
     def search_models(
         self, 

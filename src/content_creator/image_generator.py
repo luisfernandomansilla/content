@@ -427,6 +427,10 @@ class ImageGenerator:
         progress_callback: Optional[callable] = None
     ):
         """Get cached pipeline or load new one"""
+        # Special handling for LoRA models
+        if model_info.get('type') == 'lora':
+            return self._handle_local_lora_model(model_name, model_info, progress_callback)
+        
         # Check if we have this model cached
         cache_key = f"{model_name}_{model_info.get('model_id', model_name)}"
         
@@ -452,6 +456,101 @@ class ImageGenerator:
             logger.info(f"✅ Pipeline cached for {model_name}")
             
         return pipeline
+    
+    def _handle_local_lora_model(self, model_name: str, model_info: Dict[str, Any], progress_callback: Optional[callable] = None):
+        """Handle local LoRA model by loading it with a compatible base model"""
+        try:
+            if progress_callback:
+                progress_callback(f"LoRA detected: {model_name}, finding base model...")
+            
+            # Get compatible base models
+            from .models.model_manager import model_manager
+            base_models = model_manager.get_base_models_for_lora(model_name)
+            
+            if not base_models:
+                logger.error(f"No compatible base models found for LoRA: {model_name}")
+                if progress_callback:
+                    progress_callback(f"Error: No compatible base models for LoRA {model_name}")
+                return None
+            
+            # Use the first compatible base model
+            base_model_name = base_models[0]
+            
+            if progress_callback:
+                progress_callback(f"Using base model: {base_model_name} with LoRA: {model_name}")
+            
+            logger.info(f"🎭 Loading LoRA {model_name} with base model {base_model_name}")
+            
+            # Get base model info
+            all_models = model_manager.get_available_models()
+            base_model_info = all_models.get(base_model_name)
+            
+            if not base_model_info:
+                logger.error(f"Base model info not found: {base_model_name}")
+                return None
+            
+            # Create a unique cache key for this LoRA + base model combination
+            cache_key = f"lora_{model_name}_{base_model_name}"
+            
+            # Check if this combination is already cached
+            if cache_key in self._pipeline_cache:
+                logger.info(f"📋 Using cached LoRA+base pipeline: {model_name} + {base_model_name}")
+                if progress_callback:
+                    progress_callback(f"Using cached LoRA combination...")
+                    
+                pipeline = self._pipeline_cache[cache_key]
+                self._current_model = f"{model_name} (LoRA on {base_model_name})"
+                self._current_pipeline = pipeline
+                return pipeline
+            
+            # Load base pipeline
+            base_pipeline = self._load_pipeline(base_model_name, base_model_info, progress_callback)
+            
+            if not base_pipeline:
+                logger.error(f"Failed to load base pipeline: {base_model_name}")
+                return None
+            
+            # Apply LoRA to the pipeline
+            lora_path = model_info.get('path')
+            if lora_path and Path(lora_path).exists():
+                try:
+                    if progress_callback:
+                        progress_callback(f"Applying LoRA: {model_name}...")
+                    
+                    logger.info(f"🔗 Applying LoRA from: {lora_path}")
+                    
+                    # Load LoRA weights
+                    if hasattr(base_pipeline, 'load_lora_weights'):
+                        base_pipeline.load_lora_weights(lora_path, adapter_name="lora_adapter")
+                        logger.info(f"✅ LoRA applied successfully: {model_name}")
+                        
+                        if progress_callback:
+                            progress_callback(f"LoRA {model_name} applied to {base_model_name}")
+                        
+                        # Cache the combined pipeline
+                        self._pipeline_cache[cache_key] = base_pipeline
+                        self._current_model = f"{model_name} (LoRA on {base_model_name})"
+                        self._current_pipeline = base_pipeline
+                        
+                        return base_pipeline
+                    else:
+                        logger.warning(f"Base model {base_model_name} doesn't support LoRA loading")
+                        logger.info(f"Using base model {base_model_name} without LoRA")
+                        return base_pipeline
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to apply LoRA {model_name}: {e}")
+                    logger.info(f"Using base model {base_model_name} without LoRA")
+                    if progress_callback:
+                        progress_callback(f"LoRA failed, using base model {base_model_name}")
+                    return base_pipeline
+            else:
+                logger.error(f"LoRA file not found: {lora_path}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error handling LoRA model {model_name}: {e}")
+            return None
     
     def _load_pipeline(
         self,
@@ -892,8 +991,36 @@ class ImageGenerator:
         return image
     
     def get_available_models(self) -> Dict[str, Dict[str, Any]]:
-        """Get list of available image models"""
-        return config.SUPPORTED_IMAGE_MODELS
+        """Get list of available image models including downloaded models"""
+        # Start with supported image models
+        models = config.SUPPORTED_IMAGE_MODELS.copy()
+        
+        # Add downloaded models via model_manager
+        try:
+            from .models.model_manager import model_manager
+            downloaded_models = model_manager._scan_downloaded_models()
+            
+            # Filter for image generation models
+            for name, info in downloaded_models.items():
+                # Include if it's for image generation or if type suggests image use
+                content_type = info.get('content_type', 'image')
+                model_type = info.get('type', 'unknown')
+                
+                if (content_type == 'image' or 
+                    model_type in ['flux', 'stable_diffusion', 'lora', 'checkpoint'] or
+                    any(keyword in name.lower() for keyword in ['diffusion', 'flux', 'xl', 'lora'])):
+                    
+                    # Add LoRA indicator to name if it's a LoRA
+                    display_name = name
+                    if model_type == 'lora':
+                        display_name = f"{name} (LoRA)"
+                    
+                    models[display_name] = info
+                    
+        except Exception as e:
+            logger.warning(f"Error loading downloaded image models: {e}")
+        
+        return models
     
     def search_models(self, query: str) -> List[Dict[str, Any]]:
         """Search for image models"""
@@ -947,6 +1074,73 @@ class ImageGenerator:
         """Check if a specific model is cached"""
         cache_key = f"{model_name}_{model_info.get('model_id', model_name)}"
         return cache_key in self._pipeline_cache
+    
+    def _handle_lora_model(self, model_name: str, model_info: Dict[str, Any], progress_callback: Optional[callable] = None):
+        """Handle LoRA model loading by finding a compatible base model"""
+        try:
+            if progress_callback:
+                progress_callback(f"LoRA detected: {model_name}, finding base model...")
+            
+            # Get compatible base models
+            from .models.model_manager import model_manager
+            base_models = model_manager.get_base_models_for_lora(model_name)
+            
+            if not base_models:
+                logger.error(f"No compatible base models found for LoRA: {model_name}")
+                return None
+            
+            # Use the first compatible base model
+            base_model_name = base_models[0]
+            
+            if progress_callback:
+                progress_callback(f"Using base model: {base_model_name} with LoRA: {model_name}")
+            
+            # Get base model info
+            all_models = model_manager.get_available_models()
+            base_model_info = all_models.get(base_model_name)
+            
+            if not base_model_info:
+                logger.error(f"Base model info not found: {base_model_name}")
+                return None
+            
+            # Load base pipeline
+            base_pipeline = self._load_pipeline(base_model_name, base_model_info, progress_callback)
+            
+            if not base_pipeline:
+                logger.error(f"Failed to load base pipeline: {base_model_name}")
+                return None
+            
+            # Apply LoRA to the pipeline
+            lora_path = model_info.get('path')
+            if lora_path and Path(lora_path).exists():
+                try:
+                    if progress_callback:
+                        progress_callback(f"Applying LoRA: {model_name}...")
+                    
+                    # Load LoRA weights
+                    if hasattr(base_pipeline, 'load_lora_weights'):
+                        base_pipeline.load_lora_weights(lora_path)
+                        logger.info(f"✅ LoRA applied successfully: {model_name}")
+                        
+                        if progress_callback:
+                            progress_callback(f"LoRA {model_name} applied to {base_model_name}")
+                        
+                        return base_pipeline
+                    else:
+                        logger.warning(f"Base model {base_model_name} doesn't support LoRA loading")
+                        return base_pipeline
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to apply LoRA {model_name}: {e}")
+                    logger.info(f"Using base model {base_model_name} without LoRA")
+                    return base_pipeline
+            else:
+                logger.error(f"LoRA file not found: {lora_path}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error handling LoRA model {model_name}: {e}")
+            return None
 
 
 # Global image generator instance
