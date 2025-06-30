@@ -1,0 +1,52 @@
+# Core dependencies
+vllm>=0.5.0
+gradio>=4.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.35.0
+
+# Video processing
+opencv-python>=4.8.0
+pillow>=10.0.0
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.9
+av>=10.0.0
+
+# Model and inference
+diffusers>=0.24.0
+accelerate>=0.24.0
+safetensors>=0.4.0
+huggingface-hub>=0.17.0
+peft>=0.6.0
+
+# Optional performance optimizations
+# xformers requires compilation and may fail on macOS - install manually if needed:
+# pip install xformers --index-url https://download.pytorch.org/whl/cpu
+# xformers>=0.0.20; sys_platform != "darwin"
+
+# Image processing
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Utilities
+tqdm>=4.65.0
+pyyaml>=6.0
+requests>=2.31.0
+click>=8.1.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.7.0
+flake8>=6.0.0
+
+# Platform-specific optimizations (optional)
+# For Apple Silicon
+torchaudio>=2.0.0; sys_platform == "darwin"
+
+# For NVIDIA GPUs (auto-detected by vLLM)
+nvidia-ml-py>=12.0.0
+
+# Optional: For enhanced performance
+psutil>=5.9.0
+GPUtil>=1.4.0 
