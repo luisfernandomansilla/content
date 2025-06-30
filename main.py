@@ -550,7 +550,7 @@ def get_default_base_model():
 def get_gallery_files():
     """Get all generated images and videos for gallery"""
     try:
-        outputs_dir = Path(config.config.OUTPUT_DIR)
+        outputs_dir = Path(config.OUTPUT_DIR)
         if not outputs_dir.exists():
             return []
         
