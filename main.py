@@ -160,15 +160,15 @@ def download_model(model_name: str, model_type: str, model_details: dict, progre
     """Download a model from Hugging Face or Civitai"""
     try:
         if not model_name:
-            return "Please select a model to download"
+            return "Please select a model to download", gr.update(), gr.update()
         
         if not model_details:
-            return "No model details available. Please search for models first."
+            return "No model details available. Please search for models first.", gr.update(), gr.update()
         
         # Get model info from details
         model_info = model_details.get(model_name, {})
         if not model_info:
-            return f"Model details not found for {model_name}"
+            return f"Model details not found for {model_name}", gr.update(), gr.update()
         
         actual_name = model_info.get('name', model_name)
         source = model_info.get('source', 'unknown')
@@ -198,16 +198,41 @@ def download_model(model_name: str, model_type: str, model_details: dict, progre
             success_msg = f"✅ Successfully downloaded {actual_name} from {source}"
             if model_type == "video":
                 success_msg += f"\n📹 Model added to video generation options"
+                # Refresh video model dropdown
+                new_video_choices = get_model_choices()
+                return success_msg, gr.update(choices=new_video_choices), gr.update()
             elif model_type == "image":
                 success_msg += f"\n🖼️ Model added to image generation options"
+                # Refresh image model dropdown
+                new_image_choices = get_image_model_choices()
+                return success_msg, gr.update(), gr.update(choices=new_image_choices)
             
-            return success_msg
+            return success_msg, gr.update(), gr.update()
         else:
-            return f"❌ Failed to download {actual_name}"
+            return f"❌ Failed to download {actual_name}", gr.update(), gr.update()
             
     except Exception as e:
         logger.error(f"Error downloading model: {e}")
-        return f"❌ Error downloading model: {e}"
+        return f"❌ Error downloading model: {e}", gr.update(), gr.update()
+
+
+def refresh_model_dropdowns():
+    """Refresh both video and image model dropdowns"""
+    try:
+        video_choices = get_model_choices()
+        image_choices = get_image_model_choices()
+        return (
+            gr.update(choices=video_choices),
+            gr.update(choices=image_choices),
+            "✅ Model lists refreshed successfully! New downloaded models should now be visible."
+        )
+    except Exception as e:
+        logger.error(f"Error refreshing model dropdowns: {e}")
+        return (
+            gr.update(),
+            gr.update(), 
+            f"❌ Error refreshing model lists: {e}"
+        )
 
 
 def generate_video(
@@ -739,6 +764,20 @@ def create_gradio_interface():
                             value="No downloads in progress",
                             interactive=False
                         )
+                        
+                        # Add refresh button for model lists
+                        gr.HTML("<h4>🔄 Model List Management</h4>")
+                        refresh_models_btn = gr.Button(
+                            "🔄 Refresh Model Lists",
+                            variant="secondary",
+                            size="sm"
+                        )
+                        refresh_status = gr.Textbox(
+                            label="Refresh Status",
+                            value="Click to refresh if new models don't appear",
+                            interactive=False,
+                            lines=2
+                        )
                 
                 # Featured Models Section
                 gr.HTML("<h4>⭐ Featured Models</h4>")
@@ -968,7 +1007,13 @@ def create_gradio_interface():
         download_btn.click(
             fn=download_model,
             inputs=[available_models, model_type, model_details_state],
-            outputs=[download_status]
+            outputs=[download_status, model_dropdown, img_model_dropdown]
+        )
+        
+        # Model dropdown refresh
+        refresh_models_btn.click(
+            fn=refresh_model_dropdowns,
+            outputs=[model_dropdown, img_model_dropdown, refresh_status]
         )
         
         # Settings handlers
