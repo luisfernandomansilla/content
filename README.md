@@ -1,447 +1,179 @@
-# Content Creator
+# Content Creator - AI Video & Image Generation Suite
 
-A Python-based video and image generation tool powered by vLLM and Gradio that creates videos and images from text prompts with customizable styles, durations, and reference images.
+A comprehensive toolkit for generating high-quality videos and images using state-of-the-art AI models including FLUX, Stable Diffusion, and AnimateDiff.
 
-## Features
+## 🚀 Features
 
-- 🎬 **Text-to-Video Generation**: Create videos from descriptive prompts
-- 🎨 **Text-to-Image Generation**: Generate high-quality images with multiple models
-- 🖼️ **Style Control**: Choose between anime, realistic, and custom styles
-- 📷 **Reference Images**: Use one or multiple images to guide video/image style
-- ⚙️ **Customizable Parameters**: Control duration, resolution, quality, and advanced settings
-- 🖥️ **Cross-Platform**: Automatic hardware detection (Apple Silicon M4, NVIDIA GPUs, CPU fallback)
-- 🌐 **Web Interface**: User-friendly Gradio interface with separate tabs
-- 🚀 **High Performance**: Optimized with vLLM for efficient inference
-- 🔞 **NSFW Support**: Includes uncensored models for mature content generation
-- 🤗 **Hugging Face Integration**: Auto-download models on demand
-- 🎨 **Civitai Integration**: Access community models from Civitai platform
+- **Multi-Model Support**: Supports FLUX, Stable Diffusion, SDXL, AnimateDiff, and custom models
+- **Advanced Image Generation**: High-quality image synthesis with multiple checkpoints support
+- **Professional Video Creation**: Cutting-edge video generation with temporal consistency
+- **Flexible Model Management**: Easy model downloading and switching between platforms
+- **Hardware Optimization**: Automatic optimization for different hardware configurations
+- **Long Prompt Support**: Advanced handling of prompts that exceed CLIP's 77-token limit
+- **Gallery Management**: Built-in file browser and management system
 
-## Hardware Requirements
+## 🔤 Long Prompt Handling
 
-### Minimum Requirements
-- **RAM**: 8GB (16GB+ recommended)
-- **Storage**: 10GB free space for models
-- **Python**: 3.9 - 3.12
+### The CLIP 77-Token Limitation
 
-### Recommended Hardware
-- **Apple Silicon**: MacBook Pro M4 or newer
-- **NVIDIA GPUs**: RTX 3060 or better (12GB+ VRAM)
-- **RAM**: 32GB+ for high-resolution video generation
+Many AI image models use CLIP as their text encoder, which has a hard limit of 77 tokens per prompt. This means that longer, more detailed prompts get truncated, potentially losing important information.
 
-## Installation
+### Our Solutions
+
+1. **Automatic Model Recommendations**: The interface automatically detects long prompts and recommends FLUX models
+2. **Smart Prompt Prioritization**: For CLIP-based models, long prompts are automatically prioritized to keep the most important elements
+3. **Compel Integration**: Optional advanced prompt processing for better handling of long prompts
+4. **Real-time Analysis**: The UI shows estimated token count and warnings for prompts that may be truncated
+
+### Model Recommendations for Long Prompts
+
+**✅ Best for Long Prompts (No Token Limit):**
+- FLUX.1-dev
+- FLUX.1-schnell  
+- Flux-NSFW-uncensored
+
+**⚠️ Limited by CLIP (77 tokens):**
+- Stable Diffusion models
+- SDXL models  
+- Most checkpoint/LoRA models
+
+### Installing Compel (Optional)
+
+For enhanced long prompt support with CLIP-based models, install Compel:
+
+```bash
+pip install compel>=2.0.0
+```
+
+Compel provides advanced prompt processing that can help work around some CLIP limitations.
+
+## 📦 Installation
 
 ### Prerequisites
 
-1. **Install Python 3.9-3.12**
-   ```bash
-   python --version  # Verify Python version
-   ```
-
-2. **Install uv (recommended package manager)**
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
+- Python 3.8 or higher
+- CUDA-compatible GPU (recommended) or Apple Silicon Mac
+- 8GB+ RAM (16GB+ recommended)
 
 ### Quick Setup
 
-1. **Clone the repository**
+1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/content-creator.git
+   git clone https://github.com/your-username/content-creator.git
    cd content-creator
    ```
 
-2. **Create virtual environment and install dependencies**
+2. **Install dependencies**:
    ```bash
-   uv venv --python 3.12 --seed
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   uv pip install -r requirements.txt
+   pip install -r requirements.txt
    ```
 
-3. **Run the application**
+3. **Run the application**:
    ```bash
    python main.py
    ```
 
-### Manual Installation
-
-If you prefer using pip:
-```bash
-pip install -r requirements.txt
-```
-
-## Configuration
-
-### Environment Variables
-
-Content Creator supports configuration through environment variables. Create a `.env` file in the root directory to customize settings:
-
-```bash
-# Copy example configuration
-cp .env.example .env
-```
-
-**Environment Variables:**
-
-#### Application Settings
-```bash
-ENVIRONMENT=development          # Options: development, production
-DEBUG=true                      # Enable debug logging
-```
-
-#### Server Configuration
-```bash
-# Development (default)
-HOST=127.0.0.1
-PORT=7860
-
-# Production
-HOST=0.0.0.0
-PORT=80
-```
-
-#### API Tokens
-```bash
-HF_TOKEN=your_huggingface_token_here
-CIVITAI_API_TOKEN=your_civitai_token_here
-```
-
-#### Model Defaults
-```bash
-DEFAULT_IMAGE_MODEL=Stable Diffusion XL
-DEFAULT_VIDEO_MODEL=AnimateDiff
-DEFAULT_QUALITY=Balanced
-DEFAULT_RESOLUTION=720p
-```
-
-#### Directories
-```bash
-OUTPUT_DIR=outputs              # Generated content output
-TEMP_DIR=temp                   # Temporary files
-CACHE_DIR=models                # Model cache location
-```
-
-#### Performance
-```bash
-MAX_CONCURRENT_GENERATIONS=1    # Concurrent generation limit
-CLEANUP_TEMP_FILES=true         # Auto-cleanup temporary files
-AUTO_OPTIMIZE_SETTINGS=true     # Hardware-based optimization
-```
-
-#### UI Customization
-```bash
-GRADIO_THEME=soft              # UI theme (soft, default, etc.)
-GRADIO_SHARE=false             # Public sharing via Gradio
-```
-
-### Production Deployment
-
-For production deployment, set these environment variables:
-
-```bash
-ENVIRONMENT=production
-HOST=0.0.0.0
-PORT=80
-DEBUG=false
-GRADIO_SHARE=false
-CLEANUP_TEMP_FILES=true
-HF_TOKEN=your_real_token_here
-```
-
-**Docker Deployment Example:**
-```bash
-docker run -p 80:80 \
-  -e ENVIRONMENT=production \
-  -e HOST=0.0.0.0 \
-  -e PORT=80 \
-  -e HF_TOKEN=your_token \
-  content-creator
-```
-
-## Usage
-
-### Web Interface
-
-Launch the Gradio interface:
-```bash
-python main.py
-```
-
-Then open your browser to `http://localhost:7860`
-
-The interface includes three main tabs:
-- **🎥 Generate Video**: Create videos from text prompts
-- **🎨 Generate Image**: Create images from text prompts  
-- **🔍 Browse Models**: Search and download models from Hugging Face and Civitai
-- **⚙️ Settings**: Configure API keys and cache management
-
-### API Usage
-
-#### Video Generation
-```python
-from content_creator import VideoGenerator
-
-generator = VideoGenerator()
-video_path = generator.generate(
-    prompt="A beautiful sunset over mountains",
-    style="realistic",
-    duration=10,
-    resolution="1080p",
-    reference_images=["path/to/reference.jpg"]
-)
-```
-
-#### Image Generation
-```python
-from content_creator import ImageGenerator
-
-image_generator = ImageGenerator()
-image_path = image_generator.generate(
-    prompt="An anime girl with purple hair in a magical forest",
-    model_name="Flux-NSFW-uncensored",
-    style="Anime",
-    resolution="1024p",
-    output_format="PNG",
-    negative_prompt="blurry, low quality",
-    guidance_scale=8.0,
-    num_inference_steps=32,
-    seed=42
-)
-```
-
-### Examples
-
-Basic examples are provided in the `examples/` folder:
-```bash
-# Video generation example
-python examples/basic_usage.py
-
-# Image generation example
-python examples/image_usage.py
-
-# Civitai integration example
-python examples/civitai_usage.py
-```
-
-### API Keys Configuration
-
-To access models from different platforms, you may need API keys:
-
-#### Hugging Face API Key
-For private models and faster downloads:
-```bash
-export HUGGINGFACE_API_KEY="your_hf_token_here"
-# or
-export HF_TOKEN="your_hf_token_here"
-```
-
-Get your token from: [Hugging Face Settings](https://huggingface.co/settings/tokens)
-
-#### Civitai API Key
-For downloading Civitai models:
-```bash
-export CIVITAI_API_KEY="your_civitai_key_here"
-# or
-export CIVITAI_TOKEN="your_civitai_key_here"
-```
-
-Get your API key from: [Civitai Account Settings](https://civitai.com/user/account)
-
-> **Note**: Some models require authentication. Set the appropriate API keys to access private or gated models.
-
-## Model Management
-
-### Local Model Caching
-
-Content Creator automatically downloads and caches AI models locally to improve performance and reduce download times on subsequent uses.
-
-#### Cache Location
-Models are stored in the `models/` directory within the repository:
-```
-content-creator/
-├── models/                       # Local model cache (excluded from Git)
-│   ├── README.md                # Information about cached models
-│   ├── models--black-forest-labs--FLUX.1-dev/
-│   ├── models--stabilityai--stable-diffusion-xl-base-1.0/
-│   └── models--Heartsync--Flux-NSFW-uncensored/
-```
-
-#### Benefits
-- ✅ **One-time download**: Models are downloaded once and reused
-- ✅ **Faster startup**: No re-downloading when restarting the application
-- ✅ **Offline usage**: Access cached models without internet connection
-- ✅ **Local storage**: Models stay within your project directory
-
-#### Cache Management
-The application automatically manages the model cache, but you can manually:
-
-**View cache status** (in Settings tab):
-- See which models are cached
-- Check total cache size
-- View individual model sizes
-
-**Clear cache** (to free disk space):
-```bash
-# Remove all cached models
-rm -rf models/models--*/
-
-# Remove specific model
-rm -rf models/models--black-forest-labs--FLUX.1-dev/
-
-# Keep README.md for reference
-```
-
-**Note**: The `models/` directory is excluded from Git via `.gitignore` to prevent committing large model files.
-
-#### Storage Requirements
-- **FLUX Models**: ~6-12GB each
-- **Stable Diffusion Models**: ~2-8GB each
-- **LoRA Models**: ~500MB-2GB each
-- **Total**: Plan for 20-50GB depending on usage
-
-## Configuration
-
-### Supported Resolutions
-- `480p` (854x480)
-- `720p` (1280x720) 
-- `1080p` (1920x1080)
-- `1440p` (2560x1440)
-- `4k` (3840x2160)
-
-### Video Styles
-- **Realistic**: Photorealistic video generation
-- **Anime**: Animated/cartoon style
-- **Custom**: Style guided by reference images
-
-### Duration Limits
-- **Minimum**: 1 second
-- **Maximum**: 60 seconds (adjustable in config)
-
-### Output Formats
-
-#### Video Formats
-- **MP4**: Standard video format (default)
-- **WebM**: Web-optimized format
-- **AVI**: Legacy compatibility
-- **MOV**: QuickTime format
-- **GIF**: Animated image format
-
-#### Image Formats
-- **PNG**: High quality with transparency (default)
-- **JPEG**: Standard image format
-- **WebP**: Modern efficient format
-- **TIFF**: Professional format
-
-## Supported Models
-
-### Video Generation Models
-- **AnimateDiff**: Animation-focused video generation (8GB VRAM)
-- **Stable Video Diffusion**: High-quality video from images (12GB VRAM)
-- **Text2Video-Zero**: Direct text-to-video generation (6GB VRAM)
-- **VideoCrafter**: Creative video generation (10GB VRAM)
-- **CogVideoX**: Advanced video model (14GB VRAM)
-
-### Image Generation Models
-- **FLUX.1-dev**: High-quality text-to-image generation (12GB VRAM)
-- **FLUX.1-schnell**: Fast text-to-image generation (8GB VRAM)
-- **Flux-NSFW-uncensored** ⚠️: Uncensored FLUX model (12GB VRAM)
-- **Stable Diffusion XL**: High-resolution image generation (8GB VRAM)
-- **Stable Diffusion 2.1**: Popular text-to-image model (6GB VRAM)
-- **Midjourney Style**: Midjourney-style generation (6GB VRAM)
-- **DreamShaper**: Versatile image generation (6GB VRAM)
-- **Realistic Vision**: Photorealistic image generation (6GB VRAM)
-
-> ⚠️ **Content Warning**: Models marked with ⚠️ may generate NSFW content. Use responsibly and in accordance with your local laws and community guidelines.
-
-## Hardware Detection
-
-The application automatically detects your hardware and optimizes settings:
-
-- **Apple Silicon (M4)**: Uses Metal Performance Shaders optimization
-- **NVIDIA GPUs**: Leverages CUDA acceleration with vLLM
-- **CPU Fallback**: Uses CPU inference for systems without compatible GPUs
-
-## Project Structure
-
-```
-content-creator/
-├── src/
-│   ├── content_creator/
-│   │   ├── __init__.py
-│   │   ├── generator.py          # Video generation logic
-│   │   ├── image_generator.py    # Image generation logic
-│   │   ├── models/               # Model management
-│   │   │   ├── model_manager.py  # Model downloading and caching
-│   │   │   ├── huggingface_client.py  # HF API integration
-│   │   │   └── civitai_client.py # Civitai API integration
-│   │   ├── utils/                # Utility functions
-│   │   │   ├── hardware.py       # Hardware detection
-│   │   │   ├── image_utils.py    # Image processing
-│   │   │   └── video_utils.py    # Video processing
-│   │   └── config.py             # Configuration settings
-├── tests/                        # Unit tests
-├── examples/                     # Example scripts and outputs
-│   ├── basic_usage.py           # Video generation examples
-│   └── image_usage.py           # Image generation examples
-├── docs/                         # Additional documentation
-├── outputs/                      # Generated content storage
-├── requirements.txt              # Python dependencies
-├── main.py                       # Gradio web interface
-└── README.md
-```
-
-## Development
-
-### Running Tests
-```bash
-python -m pytest tests/
-```
-
-### Contributing
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## Performance Tips
-
-- **Memory Management**: Close unused applications when generating high-resolution videos
-- **Storage**: Ensure sufficient disk space for temporary files during generation
-- **Batch Processing**: Use the CLI for multiple video generation tasks
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Out of Memory Error**
-   - Reduce video resolution or duration
-   - Close other applications
-   - Consider upgrading hardware
-
-2. **Slow Generation**
-   - Ensure GPU drivers are updated
-   - Check hardware detection is working correctly
-   - Reduce video complexity
-
-3. **Model Download Issues**
-   - Check internet connection
-   - Verify sufficient disk space
-   - Try clearing model cache
-
-## License
+4. **Access the interface**: Open your browser to `http://localhost:7860`
+
+## 🔧 Configuration
+
+### API Keys (Optional)
+
+For accessing gated models or additional features:
+
+1. **Hugging Face Token**: Required for some models
+   - Get your token from https://huggingface.co/settings/tokens
+   - Add it in the Settings tab
+
+2. **CivitAI API Key**: For CivitAI model downloads
+   - Get your key from https://civitai.com/user/account
+   - Add it in the Settings tab
+
+## 📖 Usage Guide
+
+### Image Generation
+
+1. **Select Models**: Choose a base model and optional checkpoints
+2. **Write Your Prompt**: Describe the image you want (long prompts work best with FLUX)
+3. **Configure Settings**: Adjust resolution, quality, and style
+4. **Generate**: Click "Generate Image" and wait for results
+
+### Video Generation
+
+1. **Choose Video Model**: Select from AnimateDiff, Text2Video-Zero, etc.
+2. **Enter Prompt**: Describe the video content
+3. **Set Parameters**: Duration, FPS, resolution
+4. **Generate**: Create your video
+
+### Prompt Optimization Tips
+
+- **For FLUX models**: Use detailed, descriptive prompts without token concerns
+- **For Stable Diffusion**: Keep prompts focused on key elements
+- **Quality terms**: Include "masterpiece, best quality, detailed" early in the prompt
+- **Character descriptions**: Put character details at the beginning
+- **Style modifiers**: Use the style dropdown instead of adding style terms to your prompt
+
+## 🛠️ Model Management
+
+### Supported Platforms
+
+- **Hugging Face**: Thousands of open-source models
+- **CivitAI**: Community-created checkpoints and LoRAs
+- **Local Files**: Load your own `.safetensors` and `.ckpt` files
+
+### Model Types
+
+- **Base Models**: Foundation models (FLUX, SD, SDXL)
+- **Checkpoints**: Fine-tuned models for specific styles
+- **LoRAs**: Lightweight adapters for style/character modifications
+
+## 🔍 Gallery & File Management
+
+The built-in gallery provides:
+- **Visual Browser**: Preview all generated content
+- **File Statistics**: Track storage usage and file counts
+- **Bulk Operations**: Clear all files or delete individual items
+- **Auto-Refresh**: Gallery updates automatically when new content is generated
+
+## ⚡ Performance Optimization
+
+### Hardware-Specific Features
+
+**Apple Silicon (M1/M2/M3)**:
+- Automatic Metal acceleration
+- Optimized memory management
+- Model recommendations based on available memory
+
+**NVIDIA GPUs**:
+- CUDA acceleration
+- Mixed precision training
+- Memory-efficient attention
+
+**CPU Fallback**:
+- Automatic fallback for systems without dedicated GPU
+- Optimized for slower but still functional generation
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
-- [vLLM](https://docs.vllm.ai/) - Fast LLM inference engine
-- [Gradio](https://www.gradio.app/) - Web interface framework
-- [Hugging Face](https://huggingface.co/) - Model hosting and transformers
-- [Civitai](https://civitai.com/) - Community AI model platform
+- Hugging Face for the Diffusers library
+- Black Forest Labs for FLUX models
+- Stability AI for Stable Diffusion
+- The open-source AI community
 
-## Support
+## 📞 Support
 
-For issues and questions:
-- Open an [Issue](https://github.com/yourusername/content-creator/issues)
-- Check our [FAQ](docs/FAQ.md)
-- Join our [Discord](https://discord.gg/your-discord) community 
+- **Issues**: Report bugs or request features on GitHub Issues
+- **Discussions**: Join our community discussions
+- **Documentation**: Check our wiki for detailed guides
+
+---
+
+**Ready to create amazing AI content? Start generating today!** 🎨✨ 

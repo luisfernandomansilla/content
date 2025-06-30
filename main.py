@@ -968,12 +968,12 @@ def create_gradio_interface():
                         
                         # CLIP Limitation Info
                         gr.HTML("""
-                        <div style="background-color: #e7f3ff; padding: 10px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #2196f3;">
-                            <strong>🔤 Prompts Largos:</strong>
+                        <div style="background-color: #d4edda; padding: 10px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #28a745;">
+                            <strong>🔤 Prompts Largos - ✅ COMPEL DISPONIBLE:</strong>
                             <p><strong>CLIP (77 tokens límite):</strong> Stable Diffusion, SDXL, etc.</p>
                             <p><strong>T5 (sin límite práctico):</strong> FLUX.1-dev, FLUX.1-schnell</p>
-                            <p><strong>Compel disponible:</strong> Mejora el manejo de prompts largos en modelos CLIP</p>
-                            <p>💡 Para prompts largos o complejos, usa modelos FLUX para obtener mejores resultados sin truncamiento.</p>
+                            <p><strong>✨ Compel activo:</strong> Convierte prompts largos en embeddings avanzados para modelos CLIP</p>
+                            <p>🎯 <strong>Ahora puedes usar prompts largos con cualquier modelo</strong> - Compel manejará automáticamente la limitación de CLIP</p>
                         </div>
                         """)
                     
