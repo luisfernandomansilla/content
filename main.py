@@ -1587,10 +1587,37 @@ if __name__ == "__main__":
     # Create and launch the interface
     interface = create_gradio_interface()
     
-    # Launch settings
-    interface.launch(
-        server_name=config.GRADIO_HOST,
-        server_port=config.GRADIO_PORT,
-        share=config.GRADIO_SHARE,
-        show_error=True
-    ) 
+    # Launch settings with error handling
+    try:
+        interface.launch(
+            server_name=config.GRADIO_HOST,
+            server_port=config.GRADIO_PORT,
+            share=config.GRADIO_SHARE,
+            show_error=True,
+            debug=False,  # Disable debug to avoid schema processing issues
+            enable_queue=True,
+            max_threads=4
+        )
+    except ValueError as e:
+        if "shareable link must be created" in str(e):
+            logger.warning("⚠️ Localhost not accessible, creating shareable link...")
+            interface.launch(
+                server_name=config.GRADIO_HOST,
+                server_port=config.GRADIO_PORT,
+                share=True,  # Force sharing when localhost fails
+                show_error=True,
+                debug=False,
+                enable_queue=True,
+                max_threads=4
+            )
+        else:
+            logger.error(f"Failed to launch interface: {e}")
+            raise e
+    except Exception as e:
+        logger.error(f"Unexpected error launching interface: {e}")
+        # Try with minimal settings as fallback
+        interface.launch(
+            share=True,
+            debug=False,
+            show_error=True
+        ) 
