@@ -352,7 +352,7 @@ class Config:
     
     # UI Settings (configurable via environment variables)
     GRADIO_THEME: str = os.getenv("GRADIO_THEME", "soft")
-    GRADIO_PORT: int = int(os.getenv("PORT", "80" if os.getenv("ENVIRONMENT") == "production" else "7860"))
+    GRADIO_PORT: int = int(os.getenv("PORT", "80" if os.getenv("ENVIRONMENT") == "production" else "80"))
     GRADIO_HOST: str = os.getenv("HOST", "0.0.0.0" if os.getenv("ENVIRONMENT") == "production" else "127.0.0.1")
     GRADIO_SHARE: bool = os.getenv("GRADIO_SHARE", "false").lower() == "true"
     
