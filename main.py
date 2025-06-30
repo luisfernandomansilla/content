@@ -897,8 +897,34 @@ def create_gradio_interface():
         )
         
         # Model search
+        def search_and_update_dropdown(query, platform, limit=20):
+            """Search models and return proper dropdown updates"""
+            try:
+                html_results, model_choices, model_details = search_models(query, platform, limit)
+                
+                # Update dropdown with new choices and clear selection
+                if model_choices:
+                    return (
+                        html_results,  # HTML display
+                        gr.update(choices=model_choices, value=None),  # Updated dropdown
+                        model_details  # Model details state
+                    )
+                else:
+                    return (
+                        html_results,
+                        gr.update(choices=[], value=None),
+                        {}
+                    )
+            except Exception as e:
+                error_msg = f"Search error: {e}"
+                return (
+                    f"<p style='color: red;'>{error_msg}</p>",
+                    gr.update(choices=[], value=None),
+                    {}
+                )
+        
         search_btn.click(
-            fn=search_models,
+            fn=search_and_update_dropdown,
             inputs=[search_query, platform_filter],
             outputs=[search_results_display, available_models, model_details_state]
         )
