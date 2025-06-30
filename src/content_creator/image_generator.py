@@ -683,14 +683,121 @@ class ImageGenerator:
             
             model_id = model_info.get('model_id', model_name)
             model_type = model_info.get('type', 'diffusion')
+            model_source = model_info.get('source', 'unknown')
             
             # Debug: Log model information
             logger.info(f"🔍 Model Debug Info:")
             logger.info(f"   • Model name: {model_name}")
             logger.info(f"   • Model ID: {model_id}")
             logger.info(f"   • Model type: {model_type}")
+            logger.info(f"   • Source: {model_source}")
             logger.info(f"   • Base model: {model_info.get('base_model', 'N/A')}")
             
+            # Handle local files (Civitai checkpoints, safetensors, etc.)
+            if model_source == 'local_file':
+                local_path = model_info.get('path')
+                if local_path:
+                    from pathlib import Path
+                    model_file = Path(local_path)
+                    
+                    if model_file.exists():
+                        logger.info(f"🎯 Loading local checkpoint file: {local_path}")
+                        
+                        # Determine device and dtype
+                        device = self.hardware_detector.get_optimal_device()
+                        if self.hardware_detector.hardware_type == "apple_silicon":
+                            torch_dtype = torch.float16
+                        elif torch.cuda.is_available():
+                            torch_dtype = torch.float16
+                        else:
+                            torch_dtype = torch.float32
+                        
+                        if progress_callback:
+                            progress_callback(f"Loading local model file {model_name}...")
+                        
+                        # Load from single file - auto-detect pipeline type
+                        try:
+                            # First try AutoPipeline for automatic detection
+                            logger.info(f"🚀 Attempting to load with AutoPipeline from: {local_path}")
+                            pipeline = AutoPipelineForText2Image.from_single_file(
+                                local_path,
+                                torch_dtype=torch_dtype,
+                                use_safetensors=local_path.endswith('.safetensors'),
+                                safety_checker=None,  # Disable safety checker for uncensored models
+                                requires_safety_checker=False
+                            )
+                            logger.info("✅ Local checkpoint loaded with AutoPipeline!")
+                            
+                        except Exception as e:
+                            logger.warning(f"⚠️ AutoPipeline failed: {e}")
+                            
+                            # Try SDXL pipeline if it's likely an XL model
+                            if 'xl' in model_name.lower() or 'sdxl' in model_name.lower():
+                                try:
+                                    logger.info("🔄 Trying StableDiffusionXLPipeline...")
+                                    pipeline = StableDiffusionXLPipeline.from_single_file(
+                                        local_path,
+                                        torch_dtype=torch_dtype,
+                                        use_safetensors=local_path.endswith('.safetensors'),
+                                        safety_checker=None,
+                                        requires_safety_checker=False
+                                    )
+                                    logger.info("✅ Local checkpoint loaded with SDXL Pipeline!")
+                                    
+                                except Exception as e2:
+                                    logger.warning(f"⚠️ SDXL Pipeline failed: {e2}")
+                                    # Try standard pipeline as final fallback
+                                    logger.info("🔄 Trying standard StableDiffusionPipeline...")
+                                    pipeline = StableDiffusionPipeline.from_single_file(
+                                        local_path,
+                                        torch_dtype=torch_dtype,
+                                        use_safetensors=local_path.endswith('.safetensors'),
+                                        safety_checker=None,
+                                        requires_safety_checker=False
+                                    )
+                                    logger.info("✅ Local checkpoint loaded with standard Pipeline!")
+                            else:
+                                # Try standard pipeline for non-XL models
+                                logger.info("🔄 Trying standard StableDiffusionPipeline...")
+                                pipeline = StableDiffusionPipeline.from_single_file(
+                                    local_path,
+                                    torch_dtype=torch_dtype,
+                                    use_safetensors=local_path.endswith('.safetensors'),
+                                    safety_checker=None,
+                                    requires_safety_checker=False
+                                )
+                                logger.info("✅ Local checkpoint loaded with standard Pipeline!")
+                        
+                        # Move to device
+                        logger.info(f"📱 Moving local checkpoint pipeline to device: {device}")
+                        pipeline = pipeline.to(device)
+                        
+                        # Basic optimizations for local checkpoints
+                        if hasattr(pipeline, 'enable_attention_slicing'):
+                            pipeline.enable_attention_slicing()
+                            logger.info("✅ Attention slicing enabled for local checkpoint")
+                        
+                        if hasattr(pipeline, 'enable_memory_efficient_attention') and torch.cuda.is_available():
+                            try:
+                                pipeline.enable_memory_efficient_attention()
+                                logger.info("✅ Memory efficient attention enabled for local checkpoint")
+                            except Exception:
+                                pass  # Not all models support this
+                        
+                        if progress_callback:
+                            progress_callback(f"Local checkpoint {model_name} loaded successfully!")
+                        
+                        logger.info(f"🎉 Successfully loaded local checkpoint: {model_name}")
+                        return pipeline
+                        
+                    else:
+                        logger.error(f"❌ Local model file not found: {local_path}")
+                        return None
+                else:
+                    logger.error(f"❌ No path specified for local model: {model_name}")
+                    return None
+            
+            # Continue with existing HuggingFace model loading logic...
             # Determine device
             device = self.hardware_detector.get_optimal_device()
             
